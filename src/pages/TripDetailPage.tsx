@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { sampleTrips } from '@/data/sampleTrips';
-import { PlaceCard } from '@/components/trip/PlaceCard';
+import { TimelinePlace } from '@/components/trip/TimelinePlace';
+import { MapPlaceholder } from '@/components/trip/MapPlaceholder';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Share2, Copy, MapPin, Calendar, Clock } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, Sparkles, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -18,124 +18,137 @@ export default function TripDetailPage() {
   const trip = sampleTrips.find(t => t.id === tripId);
   
   if (!trip) {
-    return <div className="flex min-h-screen items-center justify-center">Trip not found</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg font-medium">Trip not found</p>
+          <Button variant="link" onClick={() => navigate('/')}>Go back home</Button>
+        </div>
+      </div>
+    );
   }
 
   const currentDayItinerary = trip.itinerary.find(d => d.day === activeDay);
   const totalPlaces = trip.itinerary.reduce((acc, day) => acc + day.places.length, 0);
+  const totalWalking = currentDayItinerary?.places.reduce((acc, p) => acc + (p.walkingTimeFromPrevious || 0), 0) || 0;
+
+  const handleShare = () => {
+    toast.success('Link copied to clipboard!');
+  };
+
+  const handleAdjustWithAI = () => {
+    toast.info('AI Agent is analyzing your trip...');
+  };
 
   return (
-    <div className="min-h-screen bg-background pb-24">
-      {/* Hero Image */}
-      <div className="relative h-64">
-        <img src={trip.coverImage} alt={trip.title} className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-        
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute left-2 top-2 rounded-full bg-black/30 text-white hover:bg-black/50"
-          onClick={() => navigate(-1)}
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute right-2 top-2 rounded-full bg-black/30 text-white hover:bg-black/50"
-        >
-          <Share2 className="h-5 w-5" />
-        </Button>
-        
-        <div className="absolute bottom-4 left-4 right-4 text-white">
-          <div className="flex items-center gap-1 text-sm opacity-90">
-            <MapPin className="h-4 w-4" />
-            {trip.destination}, {trip.country}
-          </div>
-          <h1 className="mt-1 text-2xl font-bold">{trip.title}</h1>
-        </div>
-      </div>
-      
-      {/* Trip Info */}
-      <div className="border-b px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={trip.author.avatar} />
-              <AvatarFallback>{trip.author.name[0]}</AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-medium">{trip.author.name}</p>
-              <p className="text-sm text-muted-foreground">@{trip.author.username}</p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-background pb-32">
+      {/* Header */}
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 px-4 py-3 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
           <Button 
-            onClick={() => toast.success('Trip copied to your drafts!')}
-            className="gap-2"
+            variant="ghost" 
+            size="icon" 
+            onClick={() => navigate(-1)}
+            className="rounded-full"
           >
-            <Copy className="h-4 w-4" />
-            Copy Trip
+            <ArrowLeft className="h-5 w-5" />
           </Button>
+          <div>
+            <h1 className="font-semibold">Trip to {trip.destination}</h1>
+            <p className="text-xs text-muted-foreground">{trip.duration} days • {totalPlaces} stops</p>
+          </div>
         </div>
-        
-        <div className="mt-4 flex gap-4 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Calendar className="h-4 w-4" />
-            {trip.duration} days
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-4 w-4" />
-            {totalPlaces} places
-          </span>
-          <span className="flex items-center gap-1">
-            <Copy className="h-4 w-4" />
-            {trip.remixCount} remixes
-          </span>
-        </div>
-        
-        <div className="mt-3 flex flex-wrap gap-1">
-          {trip.tags.map(tag => (
-            <Badge key={tag} variant="secondary" className="capitalize">{tag}</Badge>
-          ))}
-        </div>
-      </div>
-      
-      {/* Day Tabs */}
+        <Button variant="ghost" size="icon" className="rounded-full">
+          <MoreHorizontal className="h-5 w-5" />
+        </Button>
+      </header>
+
+      {/* Day Selector Tabs */}
       <div className="no-scrollbar flex gap-2 overflow-x-auto border-b px-4 py-3">
         {trip.itinerary.map((day) => (
           <button
             key={day.day}
             onClick={() => setActiveDay(day.day)}
             className={cn(
-              'flex-shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors',
+              'flex-shrink-0 rounded-full px-5 py-2 text-sm font-medium transition-all',
               activeDay === day.day
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'border border-border bg-card text-muted-foreground hover:bg-muted'
             )}
           >
             Day {day.day}
           </button>
         ))}
+        <button className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground hover:text-foreground">
+          <Plus className="h-4 w-4" />
+        </button>
       </div>
-      
-      {/* Places List */}
-      <div className="px-4 py-4">
+
+      {/* Map Section */}
+      <div className="px-4 pt-4">
+        <MapPlaceholder 
+          destination={trip.destination} 
+          placesCount={currentDayItinerary?.places.length || 0} 
+        />
+      </div>
+
+      {/* Itinerary Section */}
+      <div className="px-4 pt-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-foreground">Itinerary</h2>
+            <p className="text-xs text-muted-foreground">
+              {currentDayItinerary?.places.length || 0} stops • {(totalWalking * 0.08).toFixed(1)} km total walking
+            </p>
+          </div>
+          {currentDayItinerary?.title && (
+            <Badge variant="secondary" className="text-xs">
+              {currentDayItinerary.title}
+            </Badge>
+          )}
+        </div>
+
+        {/* Timeline */}
         {currentDayItinerary && (
-          <>
-            <h2 className="mb-4 text-lg font-semibold">{currentDayItinerary.title}</h2>
-            <div className="space-y-2">
-              {currentDayItinerary.places.map((place, idx) => (
-                <PlaceCard 
-                  key={place.id} 
-                  place={place} 
+          <div className="relative">
+            {currentDayItinerary.places.map((place, idx) => {
+              const startHour = 9 + Math.floor(idx * 1.5);
+              const time = `${startHour}:00 ${startHour < 12 ? 'AM' : 'PM'}`;
+              
+              return (
+                <TimelinePlace
+                  key={place.id}
+                  place={place}
                   index={idx + 1}
-                  showWalkingTime={idx > 0}
+                  time={time}
+                  isLast={idx === currentDayItinerary.places.length - 1}
+                  onClick={() => navigate(`/place/${place.id}`)}
                 />
-              ))}
-            </div>
-          </>
+              );
+            })}
+          </div>
         )}
+      </div>
+
+      {/* Bottom Action Bar */}
+      <div className="fixed bottom-20 left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-lg gap-3">
+          <Button 
+            variant="outline" 
+            className="flex-1 gap-2 rounded-xl bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400"
+            onClick={handleShare}
+          >
+            <Share2 className="h-4 w-4" />
+            Share
+          </Button>
+          <Button 
+            className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
+            onClick={handleAdjustWithAI}
+          >
+            <Sparkles className="h-4 w-4" />
+            Adjust with AI
+          </Button>
+        </div>
       </div>
       
       <BottomNav />

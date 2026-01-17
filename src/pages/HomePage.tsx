@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/navigation/BottomNav';
-import { TripCard } from '@/components/trip/TripCard';
 import { TrendingDestinations } from '@/components/home/TrendingDestinations';
 import { SearchBar } from '@/components/home/SearchBar';
 import { DestinationCard } from '@/components/home/DestinationCard';
@@ -9,6 +8,10 @@ import { sampleTrips } from '@/data/sampleTrips';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Heart } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useSavedTrips, useToggleSaveTrip } from '@/hooks/useSavedTrips';
+import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 const filters = ['All', 'Europe', 'Asia', 'Roadtrips', 'Beach', 'Culture'];
 
@@ -21,6 +24,11 @@ const destinations = [
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { data: savedTripIds = [] } = useSavedTrips();
+  const toggleSaveTrip = useToggleSaveTrip();
+  const { toast } = useToast();
+
   const [activeFilter, setActiveFilter] = useState('All');
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
   const [selectedTrending, setSelectedTrending] = useState<string | null>(null);
@@ -28,6 +36,31 @@ export default function HomePage() {
 
   const toggleDestination = (id: string) => {
     setSelectedDestination(prev => prev === id ? null : id);
+  };
+
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
+    } else {
+      navigate('/search');
+    }
+  };
+
+  const handleHeartClick = (e: React.MouseEvent, tripId: string) => {
+    e.stopPropagation();
+    
+    if (!user) {
+      toast({
+        title: 'Sign in required',
+        description: 'Please sign in to save trips.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+
+    const isSaved = savedTripIds.includes(tripId);
+    toggleSaveTrip.mutate({ tripId, isSaved });
   };
 
   return (
@@ -39,7 +72,7 @@ export default function HomePage() {
       </div>
 
       {/* Search Bar */}
-      <div className="py-3">
+      <div className="py-3" onClick={handleSearch}>
         <SearchBar 
           value={searchQuery}
           onChange={setSearchQuery}
@@ -60,7 +93,12 @@ export default function HomePage() {
             <h2 className="font-semibold text-foreground">Countries & City</h2>
             <p className="text-xs text-muted-foreground">Select multiple destinations for your route</p>
           </div>
-          <Button variant="ghost" size="sm" className="gap-1 text-primary">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="gap-1 text-primary"
+            onClick={() => navigate('/explore')}
+          >
             See all <ArrowRight className="h-3 w-3" />
           </Button>
         </div>
@@ -94,61 +132,73 @@ export default function HomePage() {
       <div className="px-4 py-4">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-semibold text-foreground">Visualize Influencer Routes</h2>
-          <Button variant="ghost" size="sm" className="gap-1 text-primary">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="gap-1 text-primary"
+            onClick={() => navigate('/trips')}
+          >
             See all <ArrowRight className="h-3 w-3" />
           </Button>
         </div>
         
         {/* Masonry-style Grid */}
         <div className="columns-2 gap-3 space-y-3">
-          {sampleTrips.map((trip, index) => (
-            <div 
-              key={trip.id} 
-              className="break-inside-avoid"
-            >
+          {sampleTrips.map((trip, index) => {
+            const isSaved = savedTripIds.includes(trip.id);
+            
+            return (
               <div 
-                className="group relative cursor-pointer overflow-hidden rounded-xl bg-card shadow-travel transition-all hover:shadow-travel-hover"
-                onClick={() => navigate(`/trip/${trip.id}`)}
+                key={trip.id} 
+                className="break-inside-avoid"
               >
-                {/* Image with variable height */}
-                <div className={`overflow-hidden ${index % 3 === 0 ? 'aspect-[3/4]' : 'aspect-square'}`}>
-                  <img 
-                    src={trip.coverImage} 
-                    alt={trip.title}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                </div>
-                
-                {/* Location Badge */}
-                <div className="absolute left-2 top-2">
-                  <Badge className="bg-white/90 text-foreground backdrop-blur-sm">
-                    {trip.destination}
-                  </Badge>
-                </div>
-                
-                {/* Heart Icon */}
-                <button 
-                  className="absolute right-2 top-2 rounded-full bg-white/80 p-1.5 backdrop-blur-sm transition-colors hover:bg-white"
-                  onClick={(e) => e.stopPropagation()}
+                <div 
+                  className="group relative cursor-pointer overflow-hidden rounded-xl bg-card shadow-travel transition-all hover:shadow-travel-hover"
+                  onClick={() => navigate(`/trip/${trip.id}`)}
                 >
-                  <Heart className="h-4 w-4 text-foreground" />
-                </button>
-
-                {/* Bottom Content */}
-                <div className="p-3">
-                  <h3 className="font-medium text-foreground line-clamp-1">{trip.title}</h3>
-                  <div className="mt-2 flex items-center gap-2">
+                  {/* Image with variable height */}
+                  <div className={`overflow-hidden ${index % 3 === 0 ? 'aspect-[3/4]' : 'aspect-square'}`}>
                     <img 
-                      src={trip.author.avatar} 
-                      alt={trip.author.name}
-                      className="h-5 w-5 rounded-full object-cover"
+                      src={trip.coverImage} 
+                      alt={trip.title}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
-                    <span className="text-xs text-muted-foreground">@{trip.author.username}</span>
+                  </div>
+                  
+                  {/* Location Badge */}
+                  <div className="absolute left-2 top-2">
+                    <Badge className="bg-white/90 text-foreground backdrop-blur-sm">
+                      {trip.destination}
+                    </Badge>
+                  </div>
+                  
+                  {/* Heart Icon */}
+                  <button 
+                    className="absolute right-2 top-2 rounded-full bg-white/80 p-1.5 backdrop-blur-sm transition-colors hover:bg-white"
+                    onClick={(e) => handleHeartClick(e, trip.id)}
+                  >
+                    <Heart className={cn(
+                      "h-4 w-4 transition-colors",
+                      isSaved ? "fill-red-500 text-red-500" : "text-foreground"
+                    )} />
+                  </button>
+
+                  {/* Bottom Content */}
+                  <div className="p-3">
+                    <h3 className="font-medium text-foreground line-clamp-1">{trip.title}</h3>
+                    <div className="mt-2 flex items-center gap-2">
+                      <img 
+                        src={trip.author.avatar} 
+                        alt={trip.author.name}
+                        className="h-5 w-5 rounded-full object-cover"
+                      />
+                      <span className="text-xs text-muted-foreground">@{trip.author.username}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

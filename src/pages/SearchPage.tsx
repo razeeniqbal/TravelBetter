@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SearchBar } from '@/components/home/SearchBar';
 import { BottomNav } from '@/components/navigation/BottomNav';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Star, MapPin } from 'lucide-react';
@@ -11,7 +9,9 @@ import { sampleTrips } from '@/data/sampleTrips';
 
 export default function SearchPage() {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const initialQuery = searchParams.get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
 
   // Get places from sample trips for display
   const allPlaces = sampleTrips.flatMap(trip => 
@@ -20,8 +20,16 @@ export default function SearchPage() {
     )
   );
 
-  const featuredPlace = allPlaces[0];
-  const nearbyPlaces = allPlaces.slice(1, 5);
+  // Filter based on search query
+  const filteredPlaces = searchQuery 
+    ? allPlaces.filter(p => 
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.category.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : allPlaces;
+
+  const featuredPlace = filteredPlaces[0];
+  const nearbyPlaces = filteredPlaces.slice(1, 5);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -50,10 +58,10 @@ export default function SearchPage() {
                 className="h-full w-full object-cover"
               />
               {featuredPlace.rating && (
-                <Badge className="absolute right-2 top-2 gap-1 bg-white/90 text-foreground">
+                <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-foreground text-sm">
                   <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                   {featuredPlace.rating}
-                </Badge>
+                </div>
               )}
             </div>
             <div className="p-4">
@@ -93,9 +101,9 @@ export default function SearchPage() {
                   className="h-full w-full object-cover"
                 />
                 {place.cost && (
-                  <Badge className="absolute left-2 top-2 bg-black/70 text-white text-[10px]">
+                  <div className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
                     {place.cost}
-                  </Badge>
+                  </div>
                 )}
               </div>
               <div className="p-2">

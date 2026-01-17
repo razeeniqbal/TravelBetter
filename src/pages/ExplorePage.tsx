@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Mic, Layers, Navigation, Star, Clock, Plus } from 'lucide-react';
 import { sampleTrips } from '@/data/sampleTrips';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 const categories = [
   { id: 'restaurants', label: 'Restaurants', icon: '🍜' },
@@ -17,8 +19,11 @@ const categories = [
 
 export default function ExplorePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [activeCategory, setActiveCategory] = useState('restaurants');
   const [selectedPlace, setSelectedPlace] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Get places for display
   const allPlaces = sampleTrips.flatMap(trip => 
@@ -28,6 +33,28 @@ export default function ExplorePage() {
   const displayPlace = selectedPlace 
     ? allPlaces.find(p => p.id === selectedPlace) 
     : allPlaces[0];
+
+  const handleAddToItinerary = () => {
+    if (!user) {
+      toast({
+        title: 'Sign in required',
+        description: 'Please sign in to add places to your itinerary.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+    toast({
+      title: 'Coming soon!',
+      description: 'Add to itinerary feature will be available soon.',
+    });
+  };
+
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -39,8 +66,14 @@ export default function ExplorePage() {
               type="text"
               placeholder="Search places..."
               className="h-12 rounded-xl bg-card pl-4 pr-12 shadow-lg"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             />
-            <button className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-muted p-1.5">
+            <button 
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-muted p-1.5"
+              onClick={handleSearch}
+            >
               <Mic className="h-4 w-4 text-muted-foreground" />
             </button>
           </div>
@@ -95,26 +128,31 @@ export default function ExplorePage() {
           <div className="relative">
             {/* Category Markers */}
             <div className="flex gap-12">
-              <div className="flex flex-col items-center">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-travel-food text-white shadow-lg">
-                  🍜
+              {allPlaces.slice(0, 3).map((place, idx) => (
+                <div 
+                  key={place.id} 
+                  className="flex flex-col items-center cursor-pointer"
+                  onClick={() => {
+                    setSelectedPlace(place.id);
+                    navigate(`/place/${place.id}`);
+                  }}
+                >
+                  <div className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-transform hover:scale-110",
+                    idx === 0 ? "bg-travel-food" : idx === 1 ? "bg-travel-culture" : "bg-travel-nature"
+                  )}>
+                    {idx === 0 ? '🍜' : idx === 1 ? '🏛️' : '🌳'}
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-col items-center">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-travel-culture text-white shadow-lg">
-                  🏛️
-                </div>
-              </div>
-              <div className="flex flex-col items-center">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-travel-nature text-white shadow-lg">
-                  🌳
-                </div>
-              </div>
+              ))}
             </div>
             
             {/* Selected Place Marker */}
             {displayPlace && (
-              <div className="absolute left-1/2 top-16 -translate-x-1/2">
+              <div 
+                className="absolute left-1/2 top-16 -translate-x-1/2 cursor-pointer"
+                onClick={() => navigate(`/place/${displayPlace.id}`)}
+              >
                 <div className="rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg">
                   {displayPlace.name}
                 </div>
@@ -132,7 +170,10 @@ export default function ExplorePage() {
 
         {displayPlace && (
           <div className="px-4 pb-4">
-            <div className="flex items-start justify-between gap-4">
+            <div 
+              className="flex items-start justify-between gap-4 cursor-pointer"
+              onClick={() => navigate(`/place/${displayPlace.id}`)}
+            >
               <div>
                 <h3 className="font-semibold text-foreground">{displayPlace.name}</h3>
                 <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
@@ -149,7 +190,10 @@ export default function ExplorePage() {
             </div>
 
             {/* Photos Carousel */}
-            <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto">
+            <div 
+              className="no-scrollbar mt-4 flex gap-2 overflow-x-auto cursor-pointer"
+              onClick={() => navigate(`/place/${displayPlace.id}`)}
+            >
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-20 w-24 shrink-0 overflow-hidden rounded-lg">
                   <img 
@@ -173,7 +217,10 @@ export default function ExplorePage() {
             </div>
 
             {/* Add Button */}
-            <Button className="mt-4 w-full gap-2 rounded-xl">
+            <Button 
+              className="mt-4 w-full gap-2 rounded-xl"
+              onClick={handleAddToItinerary}
+            >
               <Plus className="h-4 w-4" />
               Add to Itinerary Plan
             </Button>

@@ -1,13 +1,24 @@
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ShareModal } from '@/components/shared/ShareModal';
 import { ArrowLeft, Heart, Share2, Star, Eye, MapPin, MessageCircle, Diamond } from 'lucide-react';
 import { sampleTrips } from '@/data/sampleTrips';
+import { useAuth } from '@/contexts/AuthContext';
+import { useSavedPlaces, useToggleSavePlace } from '@/hooks/useSavedPlaces';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 export default function PlaceDetailPage() {
   const { placeId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { data: savedPlaceIds = [] } = useSavedPlaces();
+  const toggleSavePlace = useToggleSavePlace();
+  const { toast } = useToast();
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   // Find the place from sample data
   let place = null;
@@ -18,7 +29,7 @@ export default function PlaceDetailPage() {
       const found = day.places.find(p => p.id === placeId);
       if (found) {
         place = found;
-        tripInfo = { title: trip.title, author: trip.author };
+        tripInfo = { title: trip.title, author: trip.author, id: trip.id };
         break;
       }
     }
@@ -35,6 +46,75 @@ export default function PlaceDetailPage() {
       </div>
     );
   }
+
+  const isSaved = savedPlaceIds.includes(placeId || '');
+
+  const handleHeartClick = () => {
+    if (!user) {
+      toast({
+        title: 'Sign in required',
+        description: 'Please sign in to save places.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+    toggleSavePlace.mutate({ placeId: placeId!, isSaved });
+  };
+
+  const handleSaveClick = () => {
+    if (!user) {
+      toast({
+        title: 'Sign in required',
+        description: 'Please sign in to save places.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+    if (!isSaved) {
+      toggleSavePlace.mutate({ placeId: placeId!, isSaved: false });
+    } else {
+      toast({
+        title: 'Already saved',
+        description: 'This place is in your saved places.',
+      });
+    }
+  };
+
+  const handleAddToItinerary = () => {
+    if (!user) {
+      toast({
+        title: 'Sign in required',
+        description: 'Please sign in to add places to your itinerary.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+    toast({
+      title: 'Coming soon!',
+      description: 'Add to itinerary feature will be available soon.',
+    });
+  };
+
+  const handleAskQuestion = () => {
+    if (!user) {
+      toast({
+        title: 'Sign in required',
+        description: 'Please sign in to ask questions.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+    toast({
+      title: 'Coming soon!',
+      description: 'Q&A feature will be available soon.',
+    });
+  };
+
+  const shareUrl = `${window.location.origin}/place/${placeId}`;
 
   const reviews = [
     { id: 1, name: 'Alex K.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop', rating: 5, time: '2 days ago', text: 'Amazing atmosphere! The morning light was perfect.' },
@@ -63,10 +143,23 @@ export default function PlaceDetailPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex gap-2">
-            <Button variant="ghost" size="icon" className="rounded-full bg-black/30 text-white hover:bg-black/50">
-              <Heart className="h-5 w-5" />
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="rounded-full bg-black/30 text-white hover:bg-black/50"
+              onClick={handleHeartClick}
+            >
+              <Heart className={cn(
+                "h-5 w-5",
+                isSaved && "fill-red-500 text-red-500"
+              )} />
             </Button>
-            <Button variant="ghost" size="icon" className="rounded-full bg-black/30 text-white hover:bg-black/50">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="rounded-full bg-black/30 text-white hover:bg-black/50"
+              onClick={() => setShareModalOpen(true)}
+            >
               <Share2 className="h-5 w-5" />
             </Button>
           </div>
@@ -76,7 +169,12 @@ export default function PlaceDetailPage() {
         <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
           <div className="flex items-center gap-2 mb-2">
             {tripInfo && (
-              <Badge className="bg-primary/90 text-primary-foreground">{tripInfo.title}</Badge>
+              <Badge 
+                className="bg-primary/90 text-primary-foreground cursor-pointer"
+                onClick={() => navigate(`/trip/${tripInfo.id}`)}
+              >
+                {tripInfo.title}
+              </Badge>
             )}
             {place.rating && (
               <Badge className="bg-white/90 text-foreground gap-1">
@@ -90,7 +188,10 @@ export default function PlaceDetailPage() {
           
           <div className="mt-3 flex items-center gap-4">
             {tripInfo && (
-              <div className="flex items-center gap-2">
+              <div 
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => navigate(`/trip/${tripInfo.id}`)}
+              >
                 <Avatar className="h-6 w-6 border border-white/50">
                   <AvatarImage src={tripInfo.author.avatar} />
                   <AvatarFallback>{tripInfo.author.name[0]}</AvatarFallback>
@@ -106,8 +207,13 @@ export default function PlaceDetailPage() {
               <Eye className="h-4 w-4" />
               2.4k views
             </span>
-            <Button variant="ghost" size="sm" className="h-7 gap-1 text-white hover:bg-white/20">
-              Save
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-7 gap-1 text-white hover:bg-white/20"
+              onClick={handleSaveClick}
+            >
+              {isSaved ? 'Saved ✓' : 'Save'}
             </Button>
           </div>
         </div>
@@ -140,7 +246,10 @@ export default function PlaceDetailPage() {
           {/* Location */}
           <div>
             <h3 className="mb-2 font-semibold text-foreground">Location</h3>
-            <div className="flex items-center gap-2 rounded-xl bg-muted p-3">
+            <div 
+              className="flex items-center gap-2 rounded-xl bg-muted p-3 cursor-pointer hover:bg-muted/80 transition-colors"
+              onClick={() => navigate('/explore')}
+            >
               <MapPin className="h-5 w-5 text-primary" />
               <span className="text-sm text-muted-foreground">
                 {place.address || 'View on map'}
@@ -185,16 +294,30 @@ export default function PlaceDetailPage() {
       {/* Bottom Action Bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur-sm">
         <div className="mx-auto flex max-w-lg gap-3">
-          <Button variant="outline" className="flex-1 gap-2 rounded-xl">
+          <Button 
+            variant="outline" 
+            className="flex-1 gap-2 rounded-xl"
+            onClick={handleAskQuestion}
+          >
             <MessageCircle className="h-4 w-4" />
             Ask Question
           </Button>
-          <Button className="flex-1 gap-2 rounded-xl">
+          <Button 
+            className="flex-1 gap-2 rounded-xl"
+            onClick={handleAddToItinerary}
+          >
             <Diamond className="h-4 w-4" />
             Add to Itinerary
           </Button>
         </div>
       </div>
+
+      <ShareModal
+        open={shareModalOpen}
+        onOpenChange={setShareModalOpen}
+        title={place.name}
+        url={shareUrl}
+      />
     </div>
   );
 }

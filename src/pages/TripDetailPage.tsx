@@ -4,16 +4,20 @@ import { sampleTrips } from '@/data/sampleTrips';
 import { TimelinePlace } from '@/components/trip/TimelinePlace';
 import { MapPlaceholder } from '@/components/trip/MapPlaceholder';
 import { BottomNav } from '@/components/navigation/BottomNav';
+import { ShareModal } from '@/components/shared/ShareModal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MoreHorizontal, Plus, Share2, Sparkles, MapPin } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, Sparkles, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function TripDetailPage() {
   const { tripId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeDay, setActiveDay] = useState(1);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
   
   const trip = sampleTrips.find(t => t.id === tripId);
   
@@ -33,12 +37,38 @@ export default function TripDetailPage() {
   const totalWalking = currentDayItinerary?.places.reduce((acc, p) => acc + (p.walkingTimeFromPrevious || 0), 0) || 0;
 
   const handleShare = () => {
-    toast.success('Link copied to clipboard!');
+    setShareModalOpen(true);
   };
 
   const handleAdjustWithAI = () => {
+    if (!user) {
+      toast.info('Please sign in to use AI features');
+      navigate('/auth');
+      return;
+    }
     toast.info('AI Agent is analyzing your trip...');
   };
+
+  const handleCopyTrip = () => {
+    if (!user) {
+      toast.info('Please sign in to copy trips');
+      navigate('/auth');
+      return;
+    }
+    toast.success('Trip copied! You can now edit it.');
+    navigate('/create');
+  };
+
+  const handleReview = () => {
+    if (!user) {
+      toast.info('Please sign in to review trips');
+      navigate('/auth');
+      return;
+    }
+    navigate(`/trip/${tripId}/review`);
+  };
+
+  const shareUrl = `${window.location.origin}/trip/${tripId}`;
 
   return (
     <div className="min-h-screen bg-background pb-32">
@@ -58,9 +88,24 @@ export default function TripDetailPage() {
             <p className="text-xs text-muted-foreground">{trip.duration} days • {totalPlaces} stops</p>
           </div>
         </div>
-        <Button variant="ghost" size="icon" className="rounded-full">
-          <MoreHorizontal className="h-5 w-5" />
-        </Button>
+        <div className="flex gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="rounded-full"
+            onClick={handleCopyTrip}
+          >
+            <Copy className="h-5 w-5" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="rounded-full"
+            onClick={handleReview}
+          >
+            <MoreHorizontal className="h-5 w-5" />
+          </Button>
+        </div>
       </header>
 
       {/* Day Selector Tabs */}
@@ -79,7 +124,17 @@ export default function TripDetailPage() {
             Day {day.day}
           </button>
         ))}
-        <button className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground hover:text-foreground">
+        <button 
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground hover:text-foreground"
+          onClick={() => {
+            if (!user) {
+              toast.info('Please sign in to add days');
+              navigate('/auth');
+              return;
+            }
+            toast.info('Add day feature coming soon!');
+          }}
+        >
           <Plus className="h-4 w-4" />
         </button>
       </div>
@@ -150,6 +205,13 @@ export default function TripDetailPage() {
           </Button>
         </div>
       </div>
+
+      <ShareModal
+        open={shareModalOpen}
+        onOpenChange={setShareModalOpen}
+        title={trip.title}
+        url={shareUrl}
+      />
       
       <BottomNav />
     </div>

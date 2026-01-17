@@ -5,9 +5,10 @@ import { TimelinePlace } from '@/components/trip/TimelinePlace';
 import { MapPlaceholder } from '@/components/trip/MapPlaceholder';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { ShareModal } from '@/components/shared/ShareModal';
+import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MoreHorizontal, Plus, Share2, Sparkles, Copy } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +19,7 @@ export default function TripDetailPage() {
   const { user } = useAuth();
   const [activeDay, setActiveDay] = useState(1);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
   
   const trip = sampleTrips.find(t => t.id === tripId);
   
@@ -40,14 +42,17 @@ export default function TripDetailPage() {
     setShareModalOpen(true);
   };
 
-  const handleAdjustWithAI = () => {
+  const handleAddToItinerary = () => {
     if (!user) {
-      toast.info('Please sign in to use AI features');
+      toast.info('Please sign in to add to your itinerary');
       navigate('/auth');
       return;
     }
-    toast.info('AI Agent is analyzing your trip...');
+    setAddToItineraryOpen(true);
   };
+
+  // Get all places from current day for the dialog
+  const allPlacesFromTrip = trip.itinerary.flatMap(day => day.places);
 
   const handleCopyTrip = () => {
     if (!user) {
@@ -198,10 +203,10 @@ export default function TripDetailPage() {
           </Button>
           <Button 
             className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
-            onClick={handleAdjustWithAI}
+            onClick={handleAddToItinerary}
           >
-            <Sparkles className="h-4 w-4" />
-            Adjust with AI
+            <ListPlus className="h-4 w-4" />
+            Add to Itinerary
           </Button>
         </div>
       </div>
@@ -211,6 +216,13 @@ export default function TripDetailPage() {
         onOpenChange={setShareModalOpen}
         title={trip.title}
         url={shareUrl}
+      />
+      
+      <AddToItineraryDialog
+        open={addToItineraryOpen}
+        onOpenChange={setAddToItineraryOpen}
+        places={allPlacesFromTrip}
+        destination={trip.destination}
       />
       
       <BottomNav />

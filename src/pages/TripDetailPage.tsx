@@ -31,6 +31,9 @@ export default function TripDetailPage() {
   // Try to fetch from database first
   const { data: dbTrip, isLoading } = useTripDetail(tripId);
   
+  // Must call all hooks before any early returns
+  const remixMutation = useRemixTrip();
+  
   // Fall back to sample data if not found in DB
   const sampleTrip = sampleTrips.find(t => t.id === tripId);
   const trip = dbTrip || sampleTrip;
@@ -104,7 +107,6 @@ export default function TripDetailPage() {
     setAddToItineraryOpen(true);
   };
 
-  const remixMutation = useRemixTrip();
 
   const handleCopyTrip = async () => {
     if (!user) {

@@ -12,7 +12,7 @@ import { AddPlacesOptionsDialog } from '@/components/trip/AddPlacesOptionsDialog
 import { AttributionBadge } from '@/components/trip/AttributionBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -326,13 +326,23 @@ export default function TripDetailPage() {
               <Share2 className="h-4 w-4" />
               Share
             </Button>
-            <Button 
-              className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
-              onClick={handleAddToItinerary}
-            >
-              <ListPlus className="h-4 w-4" />
-              Add to Itinerary
-            </Button>
+            {isOwner ? (
+              <Button 
+                className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
+                onClick={toggleEditMode}
+              >
+                <Pencil className="h-4 w-4" />
+                Modify Itinerary
+              </Button>
+            ) : (
+              <Button 
+                className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
+                onClick={handleAddToItinerary}
+              >
+                <ListPlus className="h-4 w-4" />
+                Add to Itinerary
+              </Button>
+            )}
           </div>
         </div>
       )}

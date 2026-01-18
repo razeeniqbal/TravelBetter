@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,7 @@ export function AddToItineraryDialog({
   destination 
 }: AddToItineraryDialogProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const [step, setStep] = useState<Step>('select-places');
   const [selectedPlaces, setSelectedPlaces] = useState<Place[]>([]);
@@ -131,7 +133,12 @@ export function AddToItineraryDialog({
     setStep('success');
   };
 
-  const handleViewItinerary = () => {
+  const handleViewItinerary = async () => {
+    if (selectedTripId) {
+      // Invalidate queries to ensure fresh data is fetched
+      await queryClient.invalidateQueries({ queryKey: ['trip-detail', selectedTripId] });
+      await queryClient.invalidateQueries({ queryKey: ['trip-days', selectedTripId] });
+    }
     onOpenChange(false);
     if (selectedTripId) {
       navigate(`/trip/${selectedTripId}`);

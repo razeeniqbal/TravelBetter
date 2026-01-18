@@ -1,1 +1,10 @@
 project_id = "lryaombqznpfjrztcfpk"
+
+[functions.extract-places-from-image]
+verify_jwt = false
+
+[functions.extract-places-from-url]
+verify_jwt = false
+
+[functions.generate-ai-suggestions]
+verify_jwt = false

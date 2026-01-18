@@ -1,19 +1,32 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Link2, Mic, Camera, Sparkles, ArrowLeft, Settings, 
-  Calendar, Users, Plus, Minus, ChevronRight, Utensils, MapPin 
+  Calendar, Users, Plus, Minus, ChevronRight, Utensils, MapPin,
+  Loader2, X, Check
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useCreateTrip } from '@/hooks/useUserTrips';
+import { supabase } from '@/integrations/supabase/client';
 
-type FlowStep = 'hero' | 'preferences' | 'generating';
+type FlowStep = 'hero' | 'preferences' | 'generating' | 'review-extracted';
+
+interface ExtractedPlace {
+  name: string;
+  nameLocal?: string;
+  category: string;
+  description?: string;
+  tips?: string[];
+  selected?: boolean;
+}
 
 const purposes = [
   { id: 'business', label: 'Business', icon: '💼' },
@@ -82,6 +95,8 @@ function parseDescription(description: string): { destination: string; country: 
 export default function CreatePage() {
   const navigate = useNavigate();
   const createTrip = useCreateTrip();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [step, setStep] = useState<FlowStep>('hero');
   const [tripDescription, setTripDescription] = useState('');
   const [selectedPurposes, setSelectedPurposes] = useState<string[]>([]);
@@ -89,6 +104,14 @@ export default function CreatePage() {
   const [selectedPlaces, setSelectedPlaces] = useState<string[]>([]);
   const [travelers, setTravelers] = useState(2);
   const [dates, setDates] = useState('');
+  
+  // Import state
+  const [isImporting, setIsImporting] = useState(false);
+  const [importType, setImportType] = useState<'url' | 'screenshot' | null>(null);
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [extractedPlaces, setExtractedPlaces] = useState<ExtractedPlace[]>([]);
+  const [extractSummary, setExtractSummary] = useState('');
 
   const togglePurpose = (id: string) => {
     setSelectedPurposes(prev => 
@@ -106,6 +129,107 @@ export default function CreatePage() {
     setSelectedPlaces(prev => 
       prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
     );
+  };
+
+  const toggleExtractedPlace = (index: number) => {
+    setExtractedPlaces(prev => 
+      prev.map((p, i) => i === index ? { ...p, selected: !p.selected } : p)
+    );
+  };
+
+  const handleScreenshotUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportType('screenshot');
+
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result as string;
+        
+        const { data, error } = await supabase.functions.invoke('extract-places-from-image', {
+          body: { 
+            image: base64,
+            destination: parseDescription(tripDescription).destination 
+          }
+        });
+
+        if (error) throw error;
+
+        if (data.places && data.places.length > 0) {
+          setExtractedPlaces(data.places.map((p: ExtractedPlace) => ({ ...p, selected: true })));
+          setExtractSummary(data.summary || `Found ${data.places.length} places`);
+          setStep('review-extracted');
+          toast.success(`Extracted ${data.places.length} places from screenshot`);
+        } else {
+          toast.info('No places found in the image. Try a different screenshot.');
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error extracting from screenshot:', error);
+      toast.error('Failed to extract places. Please try again.');
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleUrlImport = async () => {
+    if (!urlInput.trim()) {
+      toast.error('Please enter a URL');
+      return;
+    }
+
+    setIsImporting(true);
+    setImportType('url');
+    setUrlDialogOpen(false);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-places-from-url', {
+        body: { 
+          url: urlInput,
+          destination: parseDescription(tripDescription).destination 
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.places && data.places.length > 0) {
+        setExtractedPlaces(data.places.map((p: ExtractedPlace) => ({ ...p, selected: true })));
+        setExtractSummary(data.summary || `Found ${data.places.length} places from ${data.sourceType}`);
+        setStep('review-extracted');
+        toast.success(`Extracted ${data.places.length} places from URL`);
+      } else {
+        toast.info('No places found from this URL. Try a different link.');
+      }
+    } catch (error) {
+      console.error('Error extracting from URL:', error);
+      toast.error('Failed to extract places. Please try again.');
+    } finally {
+      setIsImporting(false);
+      setUrlInput('');
+    }
+  };
+
+  const handleConfirmExtracted = () => {
+    const selectedPlaceNames = extractedPlaces
+      .filter(p => p.selected)
+      .map(p => p.name)
+      .join(', ');
+    
+    if (selectedPlaceNames) {
+      setTripDescription(prev => 
+        prev ? `${prev}\n\nPlaces to visit: ${selectedPlaceNames}` : `Places to visit: ${selectedPlaceNames}`
+      );
+    }
+    
+    setStep('preferences');
   };
 
   const handleGenerate = async () => {
@@ -190,19 +314,34 @@ export default function CreatePage() {
                 className="mt-4 min-h-[120px] resize-none rounded-xl border-border bg-card text-base shadow-sm"
               />
 
+              {/* Hidden file input for screenshot */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleScreenshotUpload}
+                className="hidden"
+              />
+
               {/* Import Option Pills */}
               <div className="mt-4 flex gap-2">
                 <Button 
                   variant="outline" 
                   className="flex-1 gap-2 rounded-full"
-                  onClick={() => setTripDescription('https://youtube.com/watch?v=...')}
+                  onClick={() => setUrlDialogOpen(true)}
+                  disabled={isImporting}
                 >
-                  <Link2 className="h-4 w-4" />
+                  {isImporting && importType === 'url' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Link2 className="h-4 w-4" />
+                  )}
                   Link
                 </Button>
                 <Button 
                   variant="outline" 
                   className="flex-1 gap-2 rounded-full"
+                  disabled
                 >
                   <Mic className="h-4 w-4" />
                   Voice
@@ -210,8 +349,14 @@ export default function CreatePage() {
                 <Button 
                   variant="outline" 
                   className="flex-1 gap-2 rounded-full"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isImporting}
                 >
-                  <Camera className="h-4 w-4" />
+                  {isImporting && importType === 'screenshot' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
                   Screenshot
                 </Button>
               </div>
@@ -395,7 +540,112 @@ export default function CreatePage() {
         </div>
       )}
 
-      {step !== 'generating' && <BottomNav />}
+      {step === 'review-extracted' && (
+        <div className="bg-background">
+          {/* Header */}
+          <header className="flex items-center justify-between border-b px-4 py-4">
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setStep('hero')}
+                className="rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+              <h1 className="text-lg font-semibold">Review Places</h1>
+            </div>
+          </header>
+
+          <div className="p-4">
+            <p className="text-sm text-muted-foreground mb-4">{extractSummary}</p>
+            
+            <div className="space-y-3">
+              {extractedPlaces.map((place, index) => (
+                <Card 
+                  key={index}
+                  className={cn(
+                    'p-4 cursor-pointer transition-all',
+                    place.selected 
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary' 
+                      : 'opacity-60'
+                  )}
+                  onClick={() => toggleExtractedPlace(index)}
+                >
+                  <div className="flex items-start gap-3">
+                    <Checkbox 
+                      checked={place.selected} 
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{place.name}</span>
+                        {place.nameLocal && (
+                          <span className="text-sm text-muted-foreground">{place.nameLocal}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-primary capitalize">{place.category}</span>
+                      {place.description && (
+                        <p className="text-sm text-muted-foreground mt-1">{place.description}</p>
+                      )}
+                      {place.tips && place.tips.length > 0 && (
+                        <p className="text-xs text-amber-600 mt-1">💡 {place.tips[0]}</p>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <Button 
+                variant="outline"
+                className="flex-1"
+                onClick={() => setStep('hero')}
+              >
+                Cancel
+              </Button>
+              <Button 
+                className="flex-1 gap-2"
+                onClick={handleConfirmExtracted}
+              >
+                <Check className="h-4 w-4" />
+                Add {extractedPlaces.filter(p => p.selected).length} Places
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step !== 'generating' && step !== 'review-extracted' && <BottomNav />}
+
+      {/* URL Import Dialog */}
+      <Dialog open={urlDialogOpen} onOpenChange={setUrlDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import from URL</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Paste a YouTube video, Instagram post, or travel blog URL to extract places.
+            </p>
+            <Input
+              placeholder="https://youtube.com/watch?v=... or https://instagram.com/p/..."
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setUrlDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleUrlImport} disabled={!urlInput.trim()}>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Extract Places
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,18 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { sampleTrips } from '@/data/sampleTrips';
-import { TimelinePlace } from '@/components/trip/TimelinePlace';
+import { DraggableTimeline } from '@/components/trip/DraggableTimeline';
 import { MapPlaceholder } from '@/components/trip/MapPlaceholder';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { ShareModal } from '@/components/shared/ShareModal';
 import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
+import { AnchorSelector } from '@/components/trip/AnchorSelector';
+import { EditModeBar } from '@/components/trip/EditModeBar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, Copy } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, Copy, Home, User, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTripDetail } from '@/hooks/useTripDetail';
+import { useTripEdit } from '@/hooks/useTripEdit';
 
 export default function TripDetailPage() {
   const { tripId } = useParams();
@@ -21,6 +24,7 @@ export default function TripDetailPage() {
   const [activeDay, setActiveDay] = useState(1);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
+  const [anchorSelectorOpen, setAnchorSelectorOpen] = useState(false);
   
   // Try to fetch from database first
   const { data: dbTrip, isLoading } = useTripDetail(tripId);
@@ -28,6 +32,32 @@ export default function TripDetailPage() {
   // Fall back to sample data if not found in DB
   const sampleTrip = sampleTrips.find(t => t.id === tripId);
   const trip = dbTrip || sampleTrip;
+
+  const isOwner = user?.id === trip?.author.id;
+
+  const {
+    isEditMode,
+    toggleEditMode,
+    itinerary,
+    reorderPlaces,
+    removePlace,
+    anchorPlaceId,
+    setAsAnchor,
+    saveChanges,
+    discardChanges,
+    isSaving,
+  } = useTripEdit({
+    tripId: tripId || '',
+    initialItinerary: trip?.itinerary || [],
+    isOwner,
+  });
+
+  // Reset itinerary when trip changes
+  useEffect(() => {
+    if (trip) {
+      discardChanges();
+    }
+  }, [trip?.id]);
   
   if (isLoading) {
     return (
@@ -48,9 +78,16 @@ export default function TripDetailPage() {
     );
   }
 
-  const currentDayItinerary = trip.itinerary.find(d => d.day === activeDay);
-  const totalPlaces = trip.itinerary.reduce((acc, day) => acc + day.places.length, 0);
+  const currentDayItinerary = itinerary.find(d => d.day === activeDay);
+  const totalPlaces = itinerary.reduce((acc, day) => acc + day.places.length, 0);
   const totalWalking = currentDayItinerary?.places.reduce((acc, p) => acc + (p.walkingTimeFromPrevious || 0), 0) || 0;
+  
+  // Get all places for anchor selection
+  const allPlaces = itinerary.flatMap(day => day.places);
+
+  // Count sources for legend
+  const userPlacesCount = allPlaces.filter(p => p.source === 'user').length;
+  const aiPlacesCount = allPlaces.filter(p => p.source === 'ai').length;
 
   const handleShare = () => {
     setShareModalOpen(true);
@@ -64,9 +101,6 @@ export default function TripDetailPage() {
     }
     setAddToItineraryOpen(true);
   };
-
-  // Get all places from current day for the dialog
-  const allPlacesFromTrip = trip.itinerary.flatMap(day => day.places);
 
   const handleCopyTrip = () => {
     if (!user) {
@@ -107,29 +141,53 @@ export default function TripDetailPage() {
             <p className="text-xs text-muted-foreground">{trip.duration} days • {totalPlaces} stops</p>
           </div>
         </div>
-        <div className="flex gap-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="rounded-full"
-            onClick={handleCopyTrip}
-          >
-            <Copy className="h-5 w-5" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="rounded-full"
-            onClick={handleReview}
-          >
-            <MoreHorizontal className="h-5 w-5" />
-          </Button>
+        <div className="flex items-center gap-2">
+          {isOwner && (
+            <EditModeBar
+              isEditMode={isEditMode}
+              isSaving={isSaving}
+              hasAnchor={!!anchorPlaceId}
+              onToggleEdit={toggleEditMode}
+              onSave={saveChanges}
+              onDiscard={discardChanges}
+              onSelectAnchor={() => setAnchorSelectorOpen(true)}
+            />
+          )}
+          {!isEditMode && (
+            <>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="rounded-full"
+                onClick={handleCopyTrip}
+              >
+                <Copy className="h-5 w-5" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="rounded-full"
+                onClick={handleReview}
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </>
+          )}
         </div>
       </header>
 
+      {/* Edit Mode Banner */}
+      {isEditMode && (
+        <div className="bg-primary/10 border-b border-primary/20 px-4 py-2">
+          <p className="text-sm text-center text-primary font-medium">
+            ✏️ Edit Mode — Drag to reorder, set anchor point, or remove places
+          </p>
+        </div>
+      )}
+
       {/* Day Selector Tabs */}
       <div className="no-scrollbar flex gap-2 overflow-x-auto border-b px-4 py-3">
-        {trip.itinerary.map((day) => (
+        {itinerary.map((day) => (
           <button
             key={day.day}
             onClick={() => setActiveDay(day.day)}
@@ -166,6 +224,38 @@ export default function TripDetailPage() {
         />
       </div>
 
+      {/* Source Legend */}
+      {(userPlacesCount > 0 || aiPlacesCount > 0) && (
+        <div className="flex items-center gap-4 px-4 pt-4">
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            {userPlacesCount > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  <User className="h-3 w-3" />
+                </span>
+                {userPlacesCount} imported
+              </span>
+            )}
+            {aiPlacesCount > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="flex items-center gap-0.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                  <Sparkles className="h-3 w-3" />
+                </span>
+                {aiPlacesCount} AI suggested
+              </span>
+            )}
+            {anchorPlaceId && (
+              <span className="flex items-center gap-1">
+                <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  <Home className="h-3 w-3" />
+                </span>
+                Anchor set
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Itinerary Section */}
       <div className="px-4 pt-6">
         <div className="mb-4 flex items-center justify-between">
@@ -182,48 +272,53 @@ export default function TripDetailPage() {
           )}
         </div>
 
-        {/* Timeline */}
+        {/* Draggable Timeline */}
         {currentDayItinerary && (
-          <div className="relative">
-            {currentDayItinerary.places.map((place, idx) => {
-              const startHour = 9 + Math.floor(idx * 1.5);
-              const time = `${startHour}:00 ${startHour < 12 ? 'AM' : 'PM'}`;
-              
-              return (
-                <TimelinePlace
-                  key={place.id}
-                  place={place}
-                  index={idx + 1}
-                  time={time}
-                  isLast={idx === currentDayItinerary.places.length - 1}
-                  onClick={() => navigate(`/place/${place.id}`)}
-                />
-              );
-            })}
+          <DraggableTimeline
+            places={currentDayItinerary.places}
+            dayIndex={itinerary.findIndex(d => d.day === activeDay)}
+            isEditMode={isEditMode}
+            anchorPlaceId={anchorPlaceId}
+            onReorder={reorderPlaces}
+            onRemove={removePlace}
+            onSetAnchor={setAsAnchor}
+          />
+        )}
+
+        {/* Empty state */}
+        {currentDayItinerary && currentDayItinerary.places.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+              <Plus className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <p className="text-muted-foreground">No places for this day</p>
+            <Button variant="link" className="mt-2">Add places</Button>
           </div>
         )}
       </div>
 
       {/* Bottom Action Bar */}
-      <div className="fixed bottom-20 left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-lg gap-3">
-          <Button 
-            variant="outline" 
-            className="flex-1 gap-2 rounded-xl bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400"
-            onClick={handleShare}
-          >
-            <Share2 className="h-4 w-4" />
-            Share
-          </Button>
-          <Button 
-            className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
-            onClick={handleAddToItinerary}
-          >
-            <ListPlus className="h-4 w-4" />
-            Add to Itinerary
-          </Button>
+      {!isEditMode && (
+        <div className="fixed bottom-20 left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur-sm">
+          <div className="mx-auto flex max-w-lg gap-3">
+            <Button 
+              variant="outline" 
+              className="flex-1 gap-2 rounded-xl bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400"
+              onClick={handleShare}
+            >
+              <Share2 className="h-4 w-4" />
+              Share
+            </Button>
+            <Button 
+              className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
+              onClick={handleAddToItinerary}
+            >
+              <ListPlus className="h-4 w-4" />
+              Add to Itinerary
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       <ShareModal
         open={shareModalOpen}
@@ -235,8 +330,16 @@ export default function TripDetailPage() {
       <AddToItineraryDialog
         open={addToItineraryOpen}
         onOpenChange={setAddToItineraryOpen}
-        places={allPlacesFromTrip}
+        places={allPlaces}
         destination={trip.destination}
+      />
+
+      <AnchorSelector
+        open={anchorSelectorOpen}
+        onOpenChange={setAnchorSelectorOpen}
+        places={allPlaces}
+        currentAnchorId={anchorPlaceId}
+        onSelectAnchor={setAsAnchor}
       />
       
       <BottomNav />

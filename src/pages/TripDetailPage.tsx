@@ -8,14 +8,16 @@ import { ShareModal } from '@/components/shared/ShareModal';
 import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { AnchorSelector } from '@/components/trip/AnchorSelector';
 import { EditModeBar } from '@/components/trip/EditModeBar';
+import { AttributionBadge } from '@/components/trip/AttributionBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, Copy, Home, User, Sparkles } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTripDetail } from '@/hooks/useTripDetail';
 import { useTripEdit } from '@/hooks/useTripEdit';
+import { useRemixTrip } from '@/hooks/useRemixTrip';
 
 export default function TripDetailPage() {
   const { tripId } = useParams();
@@ -102,14 +104,18 @@ export default function TripDetailPage() {
     setAddToItineraryOpen(true);
   };
 
-  const handleCopyTrip = () => {
+  const remixMutation = useRemixTrip();
+
+  const handleCopyTrip = async () => {
     if (!user) {
-      toast.info('Please sign in to copy trips');
+      toast.info('Please sign in to remix trips');
       navigate('/auth');
       return;
     }
-    toast.success('Trip copied! You can now edit it.');
-    navigate('/create');
+    if (trip) {
+      const newTripId = await remixMutation.mutateAsync(trip);
+      navigate(`/trip/${newTripId}`);
+    }
   };
 
   const handleReview = () => {
@@ -160,8 +166,9 @@ export default function TripDetailPage() {
                 size="icon" 
                 className="rounded-full"
                 onClick={handleCopyTrip}
+                disabled={remixMutation.isPending}
               >
-                <Copy className="h-5 w-5" />
+                <GitFork className="h-5 w-5" />
               </Button>
               <Button 
                 variant="ghost" 

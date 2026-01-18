@@ -11,6 +11,7 @@ export interface UserTrip {
   duration: number;
   cover_image: string | null;
   created_at: string;
+  remixed_from_id: string | null;
 }
 
 export interface DayItinerary {
@@ -31,7 +32,7 @@ export function useUserTrips() {
       
       const { data, error } = await supabase
         .from('trips')
-        .select('id, title, destination, country, duration, cover_image, created_at')
+        .select('id, title, destination, country, duration, cover_image, created_at, remixed_from_id')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       

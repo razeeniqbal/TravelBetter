@@ -15,6 +15,7 @@ interface SuggestedPlace {
   tips?: string[];
   confidence: number;
   reason: string;
+  neighborhood?: string;
 }
 
 serve(async (req) => {
@@ -26,6 +27,9 @@ serve(async (req) => {
   try {
     const { 
       destination,
+      userPrompt,
+      quickSelections = {},
+      importedPlaces = [],
       existingPlaces = [],
       preferences = {},
       travelStyle = [],
@@ -50,13 +54,42 @@ serve(async (req) => {
     }
 
     console.log('Generating AI suggestions for:', destination);
+    console.log('User prompt:', userPrompt);
+    console.log('Quick selections:', quickSelections);
 
     // Build context from existing places
     const existingPlaceNames = existingPlaces.map((p: { name: string }) => p.name).join(', ');
-    const styleContext = travelStyle.length > 0 ? `Travel style: ${travelStyle.join(', ')}.` : '';
-    const prefContext = Object.keys(preferences).length > 0 
-      ? `Preferences: ${JSON.stringify(preferences)}.` 
-      : '';
+    const importedPlaceNames = importedPlaces.join(', ');
+    
+    // Build preference context from quick selections
+    const preferenceContext: string[] = [];
+    if (quickSelections.purposes?.length > 0) {
+      preferenceContext.push(`Interests: ${quickSelections.purposes.join(', ')}`);
+    }
+    if (quickSelections.travelers) {
+      preferenceContext.push(`Travelers: ${quickSelections.travelers}`);
+    }
+    if (quickSelections.budget) {
+      preferenceContext.push(`Budget: ${quickSelections.budget}`);
+    }
+    if (quickSelections.pace) {
+      preferenceContext.push(`Pace: ${quickSelections.pace}`);
+    }
+
+    // Build the prompt
+    const contextParts: string[] = [];
+    if (userPrompt) {
+      contextParts.push(`User's request: "${userPrompt}"`);
+    }
+    if (preferenceContext.length > 0) {
+      contextParts.push(`Preferences: ${preferenceContext.join('. ')}`);
+    }
+    if (importedPlaceNames) {
+      contextParts.push(`Already planning to visit: ${importedPlaceNames}`);
+    }
+    if (existingPlaceNames) {
+      contextParts.push(`Already in itinerary: ${existingPlaceNames}`);
+    }
 
     // Call Lovable AI Gateway
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -74,26 +107,26 @@ serve(async (req) => {
 
 Your suggestions should:
 1. Complement the user's existing itinerary without duplicating places
-2. Consider the travel style and preferences
-3. Include a mix of popular and hidden gem spots
-4. Be logistically practical (nearby to existing places when possible)
-5. Include local favorites and authentic experiences
+2. Match the user's stated interests and preferences closely
+3. Consider the travel style, budget, and pace preferences
+4. Include a mix of popular and hidden gem spots
+5. Be logistically practical (nearby to existing places when possible)
+6. Include local favorites and authentic experiences
 
 For each suggestion, provide:
-- A confidence score (0-100) based on how well it matches preferences
-- A clear reason why this place is suggested
+- A confidence score (0-100) based on how well it matches the user's specific preferences
+- A personalized reason explaining WHY this place matches their request
+- Include the neighborhood/area for context
 
 Categories: food, culture, nature, shop, night, photo, accommodation, transport`
           },
           {
             role: 'user',
-            content: `Suggest 5 places to visit in ${destination} for Day ${dayNumber} of a ${duration}-day trip.
+            content: `Suggest 5-8 places to visit in ${destination} for a ${duration}-day trip.
 
-${existingPlaceNames ? `Already planned: ${existingPlaceNames}` : 'No places planned yet.'}
-${styleContext}
-${prefContext}
+${contextParts.join('\n\n')}
 
-Suggest places that would complement the existing itinerary. Include a mix of must-see attractions and local favorites. For each place, explain why it's a good fit.`
+Generate personalized suggestions that directly address what the user is looking for. Be specific about why each place matches their preferences.`
           }
         ],
         tools: [
@@ -105,6 +138,10 @@ Suggest places that would complement the existing itinerary. Include a mix of mu
               parameters: {
                 type: 'object',
                 properties: {
+                  promptInterpretation: {
+                    type: 'string',
+                    description: 'A brief summary of what you understood from the user request (1-2 sentences)'
+                  },
                   suggestions: {
                     type: 'array',
                     items: {
@@ -142,11 +179,15 @@ Suggest places that would complement the existing itinerary. Include a mix of mu
                         },
                         confidence: { 
                           type: 'number', 
-                          description: 'Confidence score 0-100 based on match to preferences' 
+                          description: 'Confidence score 0-100 based on match to user preferences' 
                         },
                         reason: { 
                           type: 'string', 
-                          description: 'Why this place is suggested' 
+                          description: 'Personalized explanation of why this place matches their request' 
+                        },
+                        neighborhood: {
+                          type: 'string',
+                          description: 'The neighborhood or area where this place is located'
                         }
                       },
                       required: ['name', 'category', 'description', 'confidence', 'reason'],
@@ -154,7 +195,7 @@ Suggest places that would complement the existing itinerary. Include a mix of mu
                     }
                   }
                 },
-                required: ['suggestions'],
+                required: ['suggestions', 'promptInterpretation'],
                 additionalProperties: false
               }
             }
@@ -200,15 +241,18 @@ Suggest places that would complement the existing itinerary. Include a mix of mu
 
     const result = JSON.parse(toolCall.function.arguments);
     const suggestions: SuggestedPlace[] = result.suggestions || [];
+    const promptInterpretation: string = result.promptInterpretation || '';
     
     // Sort by confidence
     suggestions.sort((a, b) => b.confidence - a.confidence);
     
     console.log(`Generated ${suggestions.length} suggestions`);
+    console.log('Prompt interpretation:', promptInterpretation);
 
     return new Response(
       JSON.stringify({ 
         suggestions,
+        promptInterpretation,
         success: true 
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

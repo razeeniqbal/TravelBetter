@@ -8,16 +8,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
-  Link2, Mic, Camera, Sparkles, ArrowLeft, Settings, 
-  Calendar, Users, Plus, Minus, ChevronRight, Utensils, MapPin,
+  Link2, Mic, Camera, Sparkles, ArrowLeft, 
   Loader2, X, Check
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useCreateTrip } from '@/hooks/useUserTrips';
 import { supabase } from '@/integrations/supabase/client';
+import { PersonalizationChatInterface } from '@/components/personalization/PersonalizationChatInterface';
+import type { AISuggestion } from '@/components/personalization/AISuggestionsList';
 
-type FlowStep = 'hero' | 'preferences' | 'generating' | 'review-extracted';
+type FlowStep = 'hero' | 'review-extracted' | 'personalization' | 'generating';
 
 interface ExtractedPlace {
   name: string;
@@ -27,31 +28,6 @@ interface ExtractedPlace {
   tips?: string[];
   selected?: boolean;
 }
-
-const purposes = [
-  { id: 'business', label: 'Business', icon: '💼' },
-  { id: 'holiday', label: 'Holiday', icon: '🏖️' },
-  { id: 'hiking', label: 'Hiking', icon: '🥾' },
-  { id: 'food', label: 'Food', icon: '🍜' },
-  { id: 'culture', label: 'Culture', icon: '🏛️' },
-  { id: 'nature', label: 'Nature', icon: '🌳' },
-];
-
-const foodPreferences = [
-  { id: 'spicy', label: 'Spicy', icon: '🌶️', desc: 'Love the heat!' },
-  { id: 'local', label: 'Local', icon: '🍜', desc: 'Authentic cuisine' },
-  { id: 'reviewed', label: 'Top Rated', icon: '⭐', desc: 'Highest reviews' },
-];
-
-const placeTypes = [
-  { id: 'beach', label: 'Beach' },
-  { id: 'museum', label: 'Museum' },
-  { id: 'shopping', label: 'Shopping Malls' },
-  { id: 'photo', label: 'Photo Spots' },
-  { id: 'concerts', label: 'Concerts' },
-  { id: 'nature', label: 'Parks' },
-  { id: 'nightlife', label: 'Nightlife' },
-];
 
 // Helper to parse destination and duration from description
 function parseDescription(description: string): { destination: string; country: string; duration: number } {
@@ -99,11 +75,6 @@ export default function CreatePage() {
   
   const [step, setStep] = useState<FlowStep>('hero');
   const [tripDescription, setTripDescription] = useState('');
-  const [selectedPurposes, setSelectedPurposes] = useState<string[]>([]);
-  const [selectedFood, setSelectedFood] = useState<string[]>([]);
-  const [selectedPlaces, setSelectedPlaces] = useState<string[]>([]);
-  const [travelers, setTravelers] = useState(2);
-  const [dates, setDates] = useState('');
   
   // Import state
   const [isImporting, setIsImporting] = useState(false);
@@ -112,24 +83,9 @@ export default function CreatePage() {
   const [urlInput, setUrlInput] = useState('');
   const [extractedPlaces, setExtractedPlaces] = useState<ExtractedPlace[]>([]);
   const [extractSummary, setExtractSummary] = useState('');
-
-  const togglePurpose = (id: string) => {
-    setSelectedPurposes(prev => 
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-    );
-  };
-
-  const toggleFood = (id: string) => {
-    setSelectedFood(prev => 
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-    );
-  };
-
-  const togglePlace = (id: string) => {
-    setSelectedPlaces(prev => 
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-    );
-  };
+  
+  // AI suggestions state
+  const [aiSelectedPlaces, setAiSelectedPlaces] = useState<AISuggestion[]>([]);
 
   const toggleExtractedPlace = (index: number) => {
     setExtractedPlaces(prev => 
@@ -218,38 +174,34 @@ export default function CreatePage() {
   };
 
   const handleConfirmExtracted = () => {
-    const selectedPlaceNames = extractedPlaces
-      .filter(p => p.selected)
-      .map(p => p.name)
-      .join(', ');
-    
-    if (selectedPlaceNames) {
-      setTripDescription(prev => 
-        prev ? `${prev}\n\nPlaces to visit: ${selectedPlaceNames}` : `Places to visit: ${selectedPlaceNames}`
-      );
-    }
-    
-    setStep('preferences');
+    // Move to personalization step with imported places
+    setStep('personalization');
   };
 
-  const handleGenerate = async () => {
+  const handlePersonalizationComplete = (selectedPlaces: AISuggestion[]) => {
+    setAiSelectedPlaces(selectedPlaces);
+    handleGenerateTrip(selectedPlaces);
+  };
+
+  const handlePersonalizationSkip = () => {
+    handleGenerateTrip([]);
+  };
+
+  const handleGenerateTrip = async (aiPlaces: AISuggestion[]) => {
     setStep('generating');
     
     // Parse user description
     const parsed = parseDescription(tripDescription);
     
-    // Parse duration from dates field if provided (e.g., "5 days" or date range)
-    let duration = parsed.duration;
-    if (dates) {
-      const daysFromDates = dates.match(/(\d+)\s*days?/i);
-      if (daysFromDates) {
-        duration = parseInt(daysFromDates[1], 10);
-      }
-    }
+    // Combine imported and AI-selected places
+    const allPlaceNames = [
+      ...extractedPlaces.filter(p => p.selected).map(p => p.name),
+      ...aiPlaces.map(p => p.name),
+    ];
     
     // Create title from description or destination
     const title = tripDescription.length > 50 
-      ? `${duration} Days in ${parsed.destination}`
+      ? `${parsed.duration} Days in ${parsed.destination}`
       : tripDescription || `Trip to ${parsed.destination}`;
     
     try {
@@ -258,31 +210,38 @@ export default function CreatePage() {
           title,
           destination: parsed.destination,
           country: parsed.country,
-          duration,
+          duration: parsed.duration,
         },
         {
           onSuccess: (data) => {
+            // Store place names in session storage for the trip detail page to use
+            if (allPlaceNames.length > 0) {
+              sessionStorage.setItem(`trip-places-${data.trip.id}`, JSON.stringify(allPlaceNames));
+            }
             navigate(`/trip/${data.trip.id}`);
           },
           onError: () => {
-            setStep('preferences');
+            setStep('personalization');
             toast.error('Failed to create trip. Please try again.');
           },
         }
       );
     } catch {
-      setStep('preferences');
+      setStep('personalization');
       toast.error('Failed to create trip. Please try again.');
     }
   };
 
   const handleImportAndContinue = () => {
     if (tripDescription.trim()) {
-      setStep('preferences');
+      setStep('personalization');
     } else {
       toast.error('Please describe your trip or import content first');
     }
   };
+
+  const parsed = parseDescription(tripDescription);
+  const importedPlaceNames = extractedPlaces.filter(p => p.selected).map(p => p.name);
 
   return (
     <div className="min-h-screen pb-24">
@@ -380,151 +339,15 @@ export default function CreatePage() {
         </>
       )}
 
-      {step === 'preferences' && (
-        <div className="bg-background">
-          {/* Header */}
-          <header className="flex items-center justify-between border-b px-4 py-4">
-            <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => setStep('hero')}
-                className="rounded-full"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <h1 className="text-lg font-semibold">Plan Your Trip</h1>
-            </div>
-            <Button variant="ghost" size="icon" className="rounded-full">
-              <Settings className="h-5 w-5" />
-            </Button>
-          </header>
-
-          <div className="space-y-6 p-4">
-            {/* Days/Time Period */}
-            <div>
-              <label className="mb-2 flex items-center gap-2 text-sm font-medium">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                Days / Time Period
-              </label>
-              <Input
-                type="text"
-                placeholder="e.g., Jan 15-20, 2025 or 5 days"
-                value={dates}
-                onChange={(e) => setDates(e.target.value)}
-                className="rounded-xl"
-              />
-            </div>
-
-            {/* Purpose of Trip */}
-            <div>
-              <label className="mb-3 block text-sm font-medium">Purpose of Trip</label>
-              <div className="flex flex-wrap gap-2">
-                {purposes.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => togglePurpose(p.id)}
-                    className={cn(
-                      'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all',
-                      selectedPurposes.includes(p.id)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    )}
-                  >
-                    <span>{p.icon}</span>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* PAX */}
-            <div>
-              <label className="mb-3 flex items-center gap-2 text-sm font-medium">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                Travelers (PAX)
-              </label>
-              <div className="flex items-center gap-4">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-10 w-10 rounded-full"
-                  onClick={() => setTravelers(Math.max(1, travelers - 1))}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <span className="w-8 text-center text-xl font-semibold">{travelers}</span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-10 w-10 rounded-full"
-                  onClick={() => setTravelers(travelers + 1)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Food Selection */}
-            <div>
-              <label className="mb-3 flex items-center gap-2 text-sm font-medium">
-                <Utensils className="h-4 w-4 text-muted-foreground" />
-                Food Preference
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {foodPreferences.map((f) => (
-                  <Card
-                    key={f.id}
-                    className={cn(
-                      'cursor-pointer p-3 text-center transition-all',
-                      selectedFood.includes(f.id)
-                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                        : 'hover:border-muted-foreground/30'
-                    )}
-                    onClick={() => toggleFood(f.id)}
-                  >
-                    <span className="text-2xl">{f.icon}</span>
-                    <p className="mt-1 text-xs font-medium">{f.label}</p>
-                  </Card>
-                ))}
-              </div>
-            </div>
-
-            {/* Places to Visit */}
-            <div>
-              <label className="mb-3 flex items-center gap-2 text-sm font-medium">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                Places to Visit
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {placeTypes.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => togglePlace(p.id)}
-                    className={cn(
-                      'rounded-full px-4 py-2 text-sm font-medium transition-all',
-                      selectedPlaces.includes(p.id)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    )}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Find Perfect Trips CTA */}
-            <Button 
-              onClick={handleGenerate}
-              className="w-full gap-2 rounded-xl py-6 text-base"
-              size="lg"
-            >
-              Find Perfect Trips
-              <ChevronRight className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
+      {step === 'personalization' && (
+        <PersonalizationChatInterface
+          destination={parsed.destination}
+          importedPlaces={importedPlaceNames}
+          duration={parsed.duration}
+          onBack={() => setStep(extractedPlaces.length > 0 ? 'review-extracted' : 'hero')}
+          onComplete={handlePersonalizationComplete}
+          onSkip={handlePersonalizationSkip}
+        />
       )}
 
       {step === 'generating' && (
@@ -551,7 +374,7 @@ export default function CreatePage() {
                 onClick={() => setStep('hero')}
                 className="rounded-full"
               >
-                <X className="h-5 w-5" />
+                <ArrowLeft className="h-5 w-5" />
               </Button>
               <h1 className="text-lg font-semibold">Review Places</h1>
             </div>
@@ -610,14 +433,14 @@ export default function CreatePage() {
                 onClick={handleConfirmExtracted}
               >
                 <Check className="h-4 w-4" />
-                Add {extractedPlaces.filter(p => p.selected).length} Places
+                Continue with {extractedPlaces.filter(p => p.selected).length} Places
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {step !== 'generating' && step !== 'review-extracted' && <BottomNav />}
+      {step === 'hero' && <BottomNav />}
 
       {/* URL Import Dialog */}
       <Dialog open={urlDialogOpen} onOpenChange={setUrlDialogOpen}>

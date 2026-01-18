@@ -135,6 +135,7 @@ export function useAddPlaceToItinerary() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['trip-days'] });
       queryClient.invalidateQueries({ queryKey: ['itinerary-places'] });
+      queryClient.invalidateQueries({ queryKey: ['trip-detail'] });
       toast({
         title: 'Place added!',
         description: `${variables.placeName} has been added to your itinerary`,
@@ -172,6 +173,7 @@ export function useCreateDayItinerary() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trip-days'] });
+      queryClient.invalidateQueries({ queryKey: ['trip-detail'] });
     },
     onError: () => {
       toast({

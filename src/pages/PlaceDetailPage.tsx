@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ShareModal } from '@/components/shared/ShareModal';
+import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { ArrowLeft, Heart, Share2, Star, Eye, MapPin, MessageCircle, Diamond } from 'lucide-react';
 import { sampleTrips } from '@/data/sampleTrips';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +12,7 @@ import { useSavedPlaces, useToggleSavePlace } from '@/hooks/useSavedPlaces';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { usePlaceWithTripInfo, usePlaceReviews } from '@/hooks/usePlaces';
+import { Place } from '@/types/trip';
 
 export default function PlaceDetailPage() {
   const { placeId } = useParams();
@@ -20,6 +22,7 @@ export default function PlaceDetailPage() {
   const toggleSavePlace = useToggleSavePlace();
   const { toast } = useToast();
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
 
   // Try to fetch from database first
   const { data: dbData, isLoading } = usePlaceWithTripInfo(placeId);
@@ -108,10 +111,21 @@ export default function PlaceDetailPage() {
       navigate('/auth');
       return;
     }
-    toast({
-      title: 'Coming soon!',
-      description: 'Add to itinerary feature will be available soon.',
-    });
+    setAddToItineraryOpen(true);
+  };
+
+  // Convert current place to Place type for the dialog
+  const placeForDialog: Place = {
+    id: placeId || '',
+    name: place?.name || '',
+    nameLocal: place?.nameLocal,
+    category: place?.category || 'attraction',
+    description: place?.description,
+    imageUrl: place?.imageUrl,
+    duration: place?.duration,
+    tips: place?.tips,
+    rating: place?.rating,
+    source: 'user',
   };
 
   const handleAskQuestion = () => {
@@ -334,6 +348,13 @@ export default function PlaceDetailPage() {
         onOpenChange={setShareModalOpen}
         title={place.name}
         url={shareUrl}
+      />
+
+      <AddToItineraryDialog
+        open={addToItineraryOpen}
+        onOpenChange={setAddToItineraryOpen}
+        places={[placeForDialog]}
+        destination={tripInfo?.title?.split(',')[0] || 'Unknown'}
       />
     </div>
   );

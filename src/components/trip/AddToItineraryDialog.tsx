@@ -284,7 +284,7 @@ export function AddToItineraryDialog({
         {/* Step 2: Select Trip */}
         {step === 'select-trip' && (
           <>
-            <ScrollArea className="flex-1 -mx-6 px-6">
+            <ScrollArea className="max-h-[50vh] -mx-6 px-6">
               {tripsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -429,7 +429,7 @@ export function AddToItineraryDialog({
         {/* Step 3: Select Day */}
         {step === 'select-day' && (
           <>
-            <ScrollArea className="flex-1 -mx-6 px-6">
+            <ScrollArea className="max-h-[50vh] -mx-6 px-6">
               {daysLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

@@ -4,14 +4,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Copy, Eye, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { TripActionsMenu } from './TripActionsMenu';
 
 interface TripCardProps {
   trip: Trip;
   onClick?: () => void;
   variant?: 'default' | 'compact';
+  showActions?: boolean;
 }
 
-export function TripCard({ trip, onClick, variant = 'default' }: TripCardProps) {
+export function TripCard({ trip, onClick, variant = 'default', showActions = false }: TripCardProps) {
   const isCompact = variant === 'compact';
   
   return (
@@ -35,13 +37,20 @@ export function TripCard({ trip, onClick, variant = 'default' }: TripCardProps) 
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         
-        {/* Duration Badge */}
-        <Badge 
-          variant="secondary" 
-          className="absolute right-2 top-2 bg-white/90 text-foreground backdrop-blur-sm"
-        >
-          {trip.duration} {trip.duration === 1 ? 'day' : 'days'}
-        </Badge>
+        {/* Duration Badge & Actions */}
+        <div className="absolute right-2 top-2 flex items-center gap-1">
+          <Badge 
+            variant="secondary" 
+            className="bg-white/90 text-foreground backdrop-blur-sm"
+          >
+            {trip.duration} {trip.duration === 1 ? 'day' : 'days'}
+          </Badge>
+          {showActions && (
+            <div className="bg-white/90 rounded-full backdrop-blur-sm">
+              <TripActionsMenu tripId={trip.id} tripTitle={trip.title} />
+            </div>
+          )}
+        </div>
         
         {/* Destination */}
         <div className="absolute bottom-2 left-3 right-3">

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Trip } from '@/types/trip';
+import { isValidUUID } from '@/lib/utils';
 
 export function useRemixTrip() {
   const queryClient = useQueryClient();
@@ -14,6 +15,9 @@ export function useRemixTrip() {
       if (!user?.id) throw new Error('Not authenticated');
 
       // 1. Create the new trip as a remix
+      // Only set remixed_from_id if original trip ID is a valid UUID
+      const remixedFromId = isValidUUID(originalTrip.id) ? originalTrip.id : null;
+      
       const { data: newTrip, error: tripError } = await supabase
         .from('trips')
         .insert({
@@ -27,7 +31,7 @@ export function useRemixTrip() {
           travel_style: originalTrip.travelStyle,
           budget: originalTrip.budget,
           pace: originalTrip.pace,
-          remixed_from_id: originalTrip.id,
+          remixed_from_id: remixedFromId,
           is_public: false,
         })
         .select()
@@ -35,11 +39,13 @@ export function useRemixTrip() {
 
       if (tripError) throw tripError;
 
-      // 2. Increment remix count on original trip
-      await supabase
-        .from('trips')
-        .update({ remix_count: (originalTrip.remixCount || 0) + 1 })
-        .eq('id', originalTrip.id);
+      // 2. Increment remix count on original trip (only if valid UUID)
+      if (remixedFromId) {
+        await supabase
+          .from('trips')
+          .update({ remix_count: (originalTrip.remixCount || 0) + 1 })
+          .eq('id', originalTrip.id);
+      }
 
       // 3. Copy day itineraries
       for (const day of originalTrip.itinerary) {

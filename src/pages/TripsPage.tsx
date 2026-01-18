@@ -126,6 +126,7 @@ export default function TripsPage() {
                   key={trip.id} 
                   trip={trip} 
                   onClick={() => navigate(`/trip/${trip.id}`)}
+                  showActions
                 />
               ))}
             </div>
@@ -145,6 +146,7 @@ export default function TripsPage() {
                   key={trip.id} 
                   trip={trip} 
                   onClick={() => navigate(`/trip/${trip.id}`)}
+                  showActions
                 />
               ))}
             </div>

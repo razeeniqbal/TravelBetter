@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { isValidUUID } from '@/lib/utils';
 
 export function useSavedPlaces() {
   const { user } = useAuth();
@@ -32,6 +33,11 @@ export function useToggleSavePlace() {
     mutationFn: async ({ placeId, isSaved }: { placeId: string; isSaved: boolean }) => {
       if (!user?.id) throw new Error('Not authenticated');
       
+      // Check if placeId is a valid UUID - sample data uses non-UUID IDs
+      if (!isValidUUID(placeId)) {
+        throw new Error('SAMPLE_PLACE');
+      }
+      
       if (isSaved) {
         const { error } = await supabase
           .from('saved_places')
@@ -59,12 +65,19 @@ export function useToggleSavePlace() {
           : 'Removed from your saved places',
       });
     },
-    onError: (error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to save place. Please try again.',
-        variant: 'destructive',
-      });
+    onError: (error: Error) => {
+      if (error.message === 'SAMPLE_PLACE') {
+        toast({
+          title: 'Cannot save this place',
+          description: 'Add this place to a trip first to save it to your collection.',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to save place. Please try again.',
+          variant: 'destructive',
+        });
+      }
     },
   });
 }

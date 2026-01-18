@@ -49,10 +49,10 @@ export function TripActionsMenu({ tripId, tripTitle }: TripActionsMenuProps) {
           <Button 
             variant="ghost" 
             size="icon" 
-            className="h-8 w-8 rounded-full hover:bg-muted"
+            className="h-8 w-8 rounded-full bg-white hover:bg-gray-100"
             onClick={(e) => e.stopPropagation()}
           >
-            <MoreVertical className="h-4 w-4" />
+            <MoreVertical className="h-4 w-4 text-gray-700" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>

@@ -68,6 +68,13 @@ export default function PlaceDetailPage() {
 
   const isSaved = savedPlaceIds.includes(placeId || '');
 
+  const placeDataForSave = {
+    name: place?.name || '',
+    category: place?.category || 'attraction',
+    description: place?.description,
+    imageUrl: place?.imageUrl,
+  };
+
   const handleHeartClick = () => {
     if (!user) {
       toast({
@@ -78,7 +85,7 @@ export default function PlaceDetailPage() {
       navigate('/auth');
       return;
     }
-    toggleSavePlace.mutate({ placeId: placeId!, isSaved });
+    toggleSavePlace.mutate({ placeId: placeId!, isSaved, placeData: placeDataForSave });
   };
 
   const handleSaveClick = () => {
@@ -92,7 +99,7 @@ export default function PlaceDetailPage() {
       return;
     }
     if (!isSaved) {
-      toggleSavePlace.mutate({ placeId: placeId!, isSaved: false });
+      toggleSavePlace.mutate({ placeId: placeId!, isSaved: false, placeData: placeDataForSave });
     } else {
       toast({
         title: 'Already saved',

@@ -184,7 +184,7 @@ export function AddToItineraryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
         <DialogTitle>
             {step === 'select-places' && 'Select Places to Add'}
@@ -283,75 +283,77 @@ export function AddToItineraryDialog({
 
         {/* Step 2: Select Trip */}
         {step === 'select-trip' && (
-          <>
-            <ScrollArea className="max-h-[50vh] -mx-6 px-6">
-              {tripsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <div className="space-y-2 pb-4">
-                  {/* Create New Trip Option - Always shown at top */}
-                  <button
-                    onClick={() => setStep('create-trip')}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-primary/50 hover:border-primary hover:bg-primary/5 transition-all text-left"
-                  >
-                    <div className="h-14 w-14 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Plus className="h-6 w-6 text-primary" />
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-primary">Create New Trip</p>
-                      <p className="text-sm text-muted-foreground">
-                        Start a fresh itinerary
-                      </p>
-                    </div>
-                    
-                    <ChevronRight className="h-5 w-5 text-primary" />
-                  </button>
-
-                  {/* Existing trips */}
-                  {userTrips && userTrips.map((trip) => (
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden -mx-6">
+              <ScrollArea className="h-full max-h-[50vh] px-6">
+                {tripsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="space-y-2 pb-4">
+                    {/* Create New Trip Option - Always shown at top */}
                     <button
-                      key={trip.id}
-                      onClick={() => handleTripSelect(trip.id)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-all text-left"
+                      onClick={() => setStep('create-trip')}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-primary/50 hover:border-primary hover:bg-primary/5 transition-all text-left"
                     >
-                      {trip.cover_image ? (
-                        <img 
-                          src={trip.cover_image} 
-                          alt={trip.title}
-                          className="h-14 w-14 rounded-lg object-cover"
-                        />
-                      ) : (
-                        <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
-                          <MapPin className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                      )}
+                      <div className="h-14 w-14 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Plus className="h-6 w-6 text-primary" />
+                      </div>
                       
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{trip.title}</p>
+                        <p className="font-medium text-primary">Create New Trip</p>
                         <p className="text-sm text-muted-foreground">
-                          {trip.destination}, {trip.country}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {trip.duration} day{trip.duration > 1 ? 's' : ''}
+                          Start a fresh itinerary
                         </p>
                       </div>
                       
-                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      <ChevronRight className="h-5 w-5 text-primary" />
                     </button>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
+
+                    {/* Existing trips */}
+                    {userTrips && userTrips.map((trip) => (
+                      <button
+                        key={trip.id}
+                        onClick={() => handleTripSelect(trip.id)}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-all text-left"
+                      >
+                        {trip.cover_image ? (
+                          <img 
+                            src={trip.cover_image} 
+                            alt={trip.title}
+                            className="h-14 w-14 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
+                            <MapPin className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                        )}
+                        
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{trip.title}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {trip.destination}, {trip.country}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {trip.duration} day{trip.duration > 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
             
-            <div className="flex gap-3 pt-2 border-t">
+            <div className="flex gap-3 pt-2 border-t shrink-0">
               <Button variant="outline" onClick={() => setStep('select-places')} className="flex-1">
                 Back
               </Button>
             </div>
-          </>
+          </div>
         )}
 
         {/* Step 2b: Create Trip Form */}

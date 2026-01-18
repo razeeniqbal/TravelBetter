@@ -24,18 +24,52 @@ export function useSavedPlaces() {
   });
 }
 
+interface PlaceData {
+  name: string;
+  category: string;
+  description?: string;
+  imageUrl?: string;
+}
+
 export function useToggleSavePlace() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ placeId, isSaved }: { placeId: string; isSaved: boolean }) => {
+    mutationFn: async ({ 
+      placeId, 
+      isSaved, 
+      placeData 
+    }: { 
+      placeId: string; 
+      isSaved: boolean;
+      placeData?: PlaceData;
+    }) => {
       if (!user?.id) throw new Error('Not authenticated');
       
-      // Check if placeId is a valid UUID - sample data uses non-UUID IDs
+      let actualPlaceId = placeId;
+      
+      // If not a valid UUID, insert the place first
       if (!isValidUUID(placeId)) {
-        throw new Error('SAMPLE_PLACE');
+        if (!placeData) {
+          throw new Error('SAMPLE_PLACE_NO_DATA');
+        }
+        
+        // Insert the sample place into the database
+        const { data: newPlace, error: insertError } = await supabase
+          .from('places')
+          .insert({
+            name: placeData.name,
+            category: placeData.category,
+            description: placeData.description || null,
+            image_url: placeData.imageUrl || null,
+          })
+          .select()
+          .single();
+        
+        if (insertError) throw insertError;
+        actualPlaceId = newPlace.id;
       }
       
       if (isSaved) {
@@ -43,18 +77,18 @@ export function useToggleSavePlace() {
           .from('saved_places')
           .delete()
           .eq('user_id', user.id)
-          .eq('place_id', placeId);
+          .eq('place_id', actualPlaceId);
         
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('saved_places')
-          .insert({ user_id: user.id, place_id: placeId });
+          .insert({ user_id: user.id, place_id: actualPlaceId });
         
         if (error) throw error;
       }
       
-      return { placeId, isSaved: !isSaved };
+      return { placeId: actualPlaceId, isSaved: !isSaved };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['saved-places', user?.id] });
@@ -66,10 +100,11 @@ export function useToggleSavePlace() {
       });
     },
     onError: (error: Error) => {
-      if (error.message === 'SAMPLE_PLACE') {
+      if (error.message === 'SAMPLE_PLACE_NO_DATA') {
         toast({
           title: 'Cannot save this place',
-          description: 'Add this place to a trip first to save it to your collection.',
+          description: 'Place data is missing. Please try again.',
+          variant: 'destructive',
         });
       } else {
         toast({

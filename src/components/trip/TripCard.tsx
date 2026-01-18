@@ -38,7 +38,7 @@ export function TripCard({ trip, onClick, variant = 'default', showActions = fal
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         
         {/* Duration Badge & Actions */}
-        <div className="absolute right-2 top-2 flex items-center gap-1">
+        <div className="absolute right-2 top-2 flex items-center gap-2">
           <Badge 
             variant="secondary" 
             className="bg-white/90 text-foreground backdrop-blur-sm"
@@ -46,7 +46,10 @@ export function TripCard({ trip, onClick, variant = 'default', showActions = fal
             {trip.duration} {trip.duration === 1 ? 'day' : 'days'}
           </Badge>
           {showActions && (
-            <div className="bg-white/90 rounded-full backdrop-blur-sm">
+            <div 
+              className="bg-white rounded-full shadow-md"
+              onClick={(e) => e.stopPropagation()}
+            >
               <TripActionsMenu tripId={trip.id} tripTitle={trip.title} />
             </div>
           )}

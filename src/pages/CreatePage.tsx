@@ -14,7 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useCreateTripWithPlaces, type PlaceInput } from '@/hooks/useUserTrips';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { PersonalizationChatInterface } from '@/components/personalization/PersonalizationChatInterface';
 import type { AISuggestion } from '@/components/personalization/AISuggestionsList';
 
@@ -105,17 +105,15 @@ export default function CreatePage() {
       const reader = new FileReader();
       reader.onload = async () => {
         const base64 = reader.result as string;
-        
-        const { data, error } = await supabase.functions.invoke('extract-places-from-image', {
-          body: { 
-            image: base64,
-            destination: parseDescription(tripDescription).destination 
-          }
-        });
+
+        const { data, error } = await api.extractPlacesFromImage(
+          base64,
+          parseDescription(tripDescription).destination
+        );
 
         if (error) throw error;
 
-        if (data.places && data.places.length > 0) {
+        if (data?.places && data.places.length > 0) {
           setExtractedPlaces(data.places.map((p: ExtractedPlace) => ({ ...p, selected: true })));
           setExtractSummary(data.summary || `Found ${data.places.length} places`);
           setStep('review-extracted');
@@ -147,16 +145,14 @@ export default function CreatePage() {
     setUrlDialogOpen(false);
 
     try {
-      const { data, error } = await supabase.functions.invoke('extract-places-from-url', {
-        body: { 
-          url: urlInput,
-          destination: parseDescription(tripDescription).destination 
-        }
-      });
+      const { data, error } = await api.extractPlacesFromUrl(
+        urlInput,
+        parseDescription(tripDescription).destination
+      );
 
       if (error) throw error;
 
-      if (data.places && data.places.length > 0) {
+      if (data?.places && data.places.length > 0) {
         setExtractedPlaces(data.places.map((p: ExtractedPlace) => ({ ...p, selected: true })));
         setExtractSummary(data.summary || `Found ${data.places.length} places from ${data.sourceType}`);
         setStep('review-extracted');

@@ -1,73 +1,132 @@
-# Welcome to your Lovable project
+# TravelBetter
 
-## Project info
+AI-powered travel planning app to help you discover and organize your perfect trip.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features
 
-## How can I edit this code?
+- AI-powered place suggestions based on your preferences
+- Extract travel places from URLs (YouTube, Instagram, TikTok, etc.)
+- Extract travel places from images
+- Trip planning and itinerary management
+- User authentication via Supabase
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- **Frontend**: React 18 + TypeScript + Vite
+- **UI**: shadcn/ui + Tailwind CSS
+- **State Management**: TanStack React Query
+- **Routing**: React Router v6
+- **Database & Auth**: Supabase (PostgreSQL, Auth)
+- **API**: Vercel Serverless Functions
+- **AI**: Google Gemini API
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Getting Started
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js 18+ (recommended to install via [nvm](https://github.com/nvm-sh/nvm))
+- npm or bun
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+### Installation
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
+# Clone the repository
 git clone <YOUR_GIT_URL>
+cd TravelBetter
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Install dependencies
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start the development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The app will be available at `http://localhost:8080`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Environment Variables
 
-**Use GitHub Codespaces**
+Create a `.env` file in the root directory for local development:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```env
+# Supabase (for database and auth)
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 
-## What technologies are used for this project?
+# Google AI (for serverless functions - used in production via Vercel env vars)
+GOOGLE_API_KEY=your_google_api_key
+```
 
-This project is built with:
+## Available Scripts
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+- `npm test` - Run tests
+- `npm run test:watch` - Run tests in watch mode
 
-## How can I deploy this project?
+## Deployment on Vercel
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+This app is designed to be deployed on Vercel with both frontend and API functions.
 
-## Can I connect a custom domain to my Lovable project?
+### 1. Connect to Vercel
 
-Yes, you can!
+1. Push your code to GitHub
+2. Go to [vercel.com](https://vercel.com) and import your repository
+3. Vercel will auto-detect the Vite framework
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### 2. Set Environment Variables
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+In Vercel Dashboard → Project Settings → Environment Variables, add:
+
+| Variable | Description |
+|----------|-------------|
+| `VITE_SUPABASE_URL` | Your Supabase project URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Your Supabase anon/public key |
+| `GOOGLE_API_KEY` | Your Google AI API key (for Gemini) |
+
+### 3. Deploy
+
+Click "Deploy" - Vercel will:
+- Build the React frontend
+- Deploy the `/api` serverless functions automatically
+- Set up routing so `/api/*` routes to your functions
+
+### API Routes
+
+The following serverless functions are available:
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/extract-places-from-url` | Extract travel places from a URL |
+| `POST /api/extract-places-from-image` | Extract travel places from an image |
+| `POST /api/generate-ai-suggestions` | Generate AI-powered place suggestions |
+
+## Project Structure
+
+```text
+TravelBetter/
+├── api/                    # Vercel Serverless Functions
+│   ├── extract-places-from-url.ts
+│   ├── extract-places-from-image.ts
+│   └── generate-ai-suggestions.ts
+├── src/
+│   ├── components/         # React components
+│   ├── pages/              # Page components
+│   ├── contexts/           # React Context
+│   ├── hooks/              # Custom React hooks
+│   ├── integrations/       # External API integrations
+│   ├── lib/                # Utility libraries
+│   ├── types/              # TypeScript types
+│   └── App.tsx             # Main app component
+├── supabase/
+│   └── migrations/         # Database migrations
+└── public/                 # Static assets
+```
+
+## Getting a Google API Key
+
+1. Go to [Google AI Studio](https://aistudio.google.com/)
+2. Click "Get API Key"
+3. Create a new API key or use an existing one
+4. Add it to your Vercel environment variables as `GOOGLE_API_KEY`

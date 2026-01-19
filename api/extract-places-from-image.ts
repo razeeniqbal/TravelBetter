@@ -1,0 +1,147 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+interface ExtractedPlace {
+  name: string;
+  nameLocal?: string;
+  category: string;
+  description?: string;
+  tips?: string[];
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { image, destination } = req.body;
+
+    if (!image) {
+      return res.status(400).json({ error: 'Image data is required' });
+    }
+
+    const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+    if (!GOOGLE_API_KEY) {
+      console.error('GOOGLE_API_KEY is not configured');
+      return res.status(500).json({ error: 'AI service not configured' });
+    }
+
+    console.log('Extracting places from image for destination:', destination);
+
+    const systemPrompt = `You are a travel assistant that extracts place names and travel information from images.
+
+When analyzing travel-related images (screenshots of itineraries, maps, social media posts, etc.), extract:
+1. Place names (restaurants, attractions, hotels, shops, temples, etc.)
+2. Local names if visible (in original script)
+3. Category (food, culture, nature, shop, night, photo, accommodation, transport)
+4. Brief description if context is available
+5. Any tips or recommendations mentioned
+
+You MUST respond with a valid JSON object in this exact format:
+{
+  "places": [
+    {
+      "name": "Place name in English",
+      "nameLocal": "Local name if visible",
+      "category": "one of: food, culture, nature, shop, night, photo, accommodation, transport",
+      "description": "Brief description",
+      "tips": ["tip1", "tip2"]
+    }
+  ],
+  "summary": "Brief summary of what was found in the image"
+}`;
+
+    const userPrompt = `Extract all places and travel recommendations from this image.${destination ? ` The destination is ${destination}.` : ''} Focus on identifying specific named locations, restaurants, attractions, and any travel tips visible.
+
+Respond ONLY with valid JSON, no markdown or extra text.`;
+
+    // Prepare image data for Gemini
+    const imageData = image.startsWith('data:')
+      ? image.split(',')[1]
+      : image;
+
+    const mimeType = image.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+
+    // Call Google Gemini API with vision
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: systemPrompt + '\n\n' + userPrompt },
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: imageData
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 2048,
+          responseMimeType: 'application/json'
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
+      }
+      const errorText = await response.text();
+      console.error('Google AI error:', response.status, errorText);
+      return res.status(500).json({ error: 'Failed to analyze image' });
+    }
+
+    const data = await response.json();
+    console.log('AI response received');
+
+    // Extract the response text from Gemini format
+    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!responseText) {
+      console.error('Unexpected response format:', JSON.stringify(data));
+      return res.status(200).json({ error: 'Failed to extract places from image', places: [] });
+    }
+
+    // Parse the JSON response
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', responseText);
+      return res.status(200).json({ error: 'Failed to parse AI response', places: [] });
+    }
+
+    const places: ExtractedPlace[] = result.places || [];
+
+    console.log(`Extracted ${places.length} places from image`);
+
+    return res.status(200).json({
+      places,
+      summary: result.summary || `Found ${places.length} places`,
+      success: true
+    });
+
+  } catch (error) {
+    console.error('Error processing image:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}

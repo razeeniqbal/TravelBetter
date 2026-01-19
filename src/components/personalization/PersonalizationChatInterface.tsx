@@ -9,7 +9,7 @@ import { PromptTextArea } from './PromptTextArea';
 import { PromptPreview } from './PromptPreview';
 import { ExamplePrompts } from './ExamplePrompts';
 import { AISuggestionsList, AISuggestion } from './AISuggestionsList';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 type ChatStep = 'customize' | 'preview' | 'loading' | 'suggestions';
@@ -62,30 +62,28 @@ export function PersonalizationChatInterface({
     const startTime = Date.now();
 
     try {
-      const { data, error } = await supabase.functions.invoke('generate-ai-suggestions', {
-        body: {
-          destination,
-          userPrompt: displayPrompt,
-          quickSelections: state.quickSelections,
-          importedPlaces: importedPlaces,
-          duration: tripDays,
-          existingPlaces: importedPlaces.map(name => ({ name })),
-          preferences: {
-            purposes: state.quickSelections.purposes,
-            travelers: state.quickSelections.travelers,
-            budget: state.quickSelections.budget,
-            pace: state.quickSelections.pace,
-          },
-          travelStyle: state.quickSelections.purposes,
+      const { data, error } = await api.generateAISuggestions({
+        destination,
+        userPrompt: displayPrompt,
+        quickSelections: state.quickSelections,
+        importedPlaces: importedPlaces,
+        duration: tripDays,
+        existingPlaces: importedPlaces.map(name => ({ name })),
+        preferences: {
+          purposes: state.quickSelections.purposes,
+          travelers: state.quickSelections.travelers,
+          budget: state.quickSelections.budget,
+          pace: state.quickSelections.pace,
         },
+        travelStyle: state.quickSelections.purposes,
       });
 
       if (error) throw error;
 
       const endTime = Date.now();
       setProcessingTime(endTime - startTime);
-      
-      if (data.suggestions && data.suggestions.length > 0) {
+
+      if (data?.suggestions && data.suggestions.length > 0) {
         setSuggestions(data.suggestions.map((s: AISuggestion) => ({
           ...s,
           accepted: false,

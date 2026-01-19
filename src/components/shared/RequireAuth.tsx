@@ -9,6 +9,11 @@ interface RequireAuthProps {
 export function RequireAuth({ children }: RequireAuthProps) {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const authDisabled = import.meta.env.VITE_DISABLE_AUTH === 'true';
+
+  if (authDisabled) {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (

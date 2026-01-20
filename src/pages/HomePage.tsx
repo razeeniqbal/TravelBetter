@@ -7,12 +7,14 @@ import { DestinationCard } from '@/components/home/DestinationCard';
 import { sampleTrips } from '@/data/sampleTrips';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Heart, GitFork } from 'lucide-react';
+import { ArrowRight, Heart, GitFork, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSavedTrips, useToggleSaveTrip } from '@/hooks/useSavedTrips';
 import { useRemixTrip } from '@/hooks/useRemixTrip';
+import { useFeaturedTrips } from '@/hooks/usePublicTrips';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import type { Trip } from '@/types/trip';
 
 const filters = ['All', 'Europe', 'Asia', 'Roadtrips', 'Beach', 'Culture'];
 
@@ -65,7 +67,11 @@ export default function HomePage() {
     toggleSaveTrip.mutate({ tripId, isSaved });
   };
 
-  const handleRemixClick = async (e: React.MouseEvent, trip: typeof sampleTrips[0]) => {
+  // Fetch real public trips, fall back to sample data if none exist
+  const { data: publicTrips, isLoading: isLoadingTrips } = useFeaturedTrips();
+  const displayTrips: Trip[] = publicTrips && publicTrips.length > 0 ? publicTrips : sampleTrips;
+
+  const handleRemixClick = async (e: React.MouseEvent, trip: Trip) => {
     e.stopPropagation();
     
     if (!user) {
@@ -166,8 +172,13 @@ export default function HomePage() {
         </div>
         
         {/* Masonry-style Grid */}
+        {isLoadingTrips ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
         <div className="columns-2 gap-3 space-y-3">
-          {sampleTrips.map((trip, index) => {
+          {displayTrips.map((trip, index) => {
             const isSaved = savedTripIds.includes(trip.id);
             
             return (
@@ -237,6 +248,7 @@ export default function HomePage() {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Floating Start Planning Button */}

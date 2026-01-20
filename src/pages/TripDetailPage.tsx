@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { sampleTrips } from '@/data/sampleTrips';
 import { DraggableTimeline } from '@/components/trip/DraggableTimeline';
 import { MapPlaceholder } from '@/components/trip/MapPlaceholder';
 import { BottomNav } from '@/components/navigation/BottomNav';
@@ -35,16 +34,12 @@ export default function TripDetailPage() {
   const [addPlacesDialogOpen, setAddPlacesDialogOpen] = useState(false);
   const [isAddingDay, setIsAddingDay] = useState(false);
   
-  // Try to fetch from database first
-  const { data: dbTrip, isLoading } = useTripDetail(tripId);
-  
+  // Fetch trip from database
+  const { data: trip, isLoading } = useTripDetail(tripId);
+
   // Must call all hooks before any early returns
   const remixMutation = useRemixTrip();
   const createDayItinerary = useCreateDayItinerary();
-  
-  // Fall back to sample data if not found in DB
-  const sampleTrip = sampleTrips.find(t => t.id === tripId);
-  const trip = dbTrip || sampleTrip;
 
   const isOwner = user?.id === trip?.author.id;
 

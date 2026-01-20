@@ -19,7 +19,7 @@ interface PersonalizationChatInterfaceProps {
   importedPlaces: string[];
   duration: number;
   onBack: () => void;
-  onComplete: (selectedPlaces: AISuggestion[], days: number) => void;
+  onComplete: (selectedPlaces: AISuggestion[], days: number, resolvedDestination?: string) => void;
   onSkip: (days: number) => void;
 }
 
@@ -35,6 +35,7 @@ export function PersonalizationChatInterface({
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
   const [promptInterpretation, setPromptInterpretation] = useState<string>();
+  const [resolvedDestination, setResolvedDestination] = useState<string>();
   const [processingTime, setProcessingTime] = useState<number>();
   const [tripDays, setTripDays] = useState(duration || 3);
 
@@ -55,6 +56,12 @@ export function PersonalizationChatInterface({
   const handleGetSuggestions = async () => {
     if (!isValid) {
       toast.error('Please add more details to your request');
+      return;
+    }
+
+    // Allow any destination input - AI will interpret it
+    if (!destination || !destination.trim()) {
+      toast.error('Please describe your trip destination');
       return;
     }
 
@@ -90,6 +97,10 @@ export function PersonalizationChatInterface({
           rejected: false,
         })));
         setPromptInterpretation(data.promptInterpretation);
+        // Store the AI-resolved destination for use when creating the trip
+        if (data.resolvedDestination) {
+          setResolvedDestination(data.resolvedDestination);
+        }
         setChatStep('suggestions');
       } else {
         toast.info('No suggestions found. Try adjusting your preferences.');
@@ -122,7 +133,7 @@ export function PersonalizationChatInterface({
 
   const handleContinue = () => {
     const selectedPlaces = suggestions.filter(s => s.accepted);
-    onComplete(selectedPlaces, tripDays);
+    onComplete(selectedPlaces, tripDays, resolvedDestination);
   };
 
   const handleSkip = () => {

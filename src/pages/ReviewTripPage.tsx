@@ -3,8 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { X, Star, ArrowRight, ChevronRight } from 'lucide-react';
-import { sampleTrips } from '@/data/sampleTrips';
+import { X, Star, ArrowRight, ChevronRight, Loader2 } from 'lucide-react';
+import { useTripDetail } from '@/hooks/useTripDetail';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -25,8 +25,27 @@ export default function ReviewTripPage() {
   const [rating, setRating] = useState(4);
   const [notes, setNotes] = useState('');
 
-  const trip = sampleTrips.find(t => t.id === tripId) || sampleTrips[0];
-  const currentDayItinerary = trip.itinerary.find(d => d.day === activeDay);
+  const { data: trip, isLoading } = useTripDetail(tripId);
+  const currentDayItinerary = trip?.itinerary.find(d => d.day === activeDay);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!trip) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg font-medium">Trip not found</p>
+          <Button variant="link" onClick={() => navigate('/')}>Go back home</Button>
+        </div>
+      </div>
+    );
+  }
 
   const toggleVibe = (id: string) => {
     setSelectedVibes(prev => 

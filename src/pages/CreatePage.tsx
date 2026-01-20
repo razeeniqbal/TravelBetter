@@ -29,43 +29,64 @@ interface ExtractedPlace {
   selected?: boolean;
 }
 
-// Helper to parse destination and duration from description
-function parseDescription(description: string): { destination: string; country: string; duration: number } {
-  // Look for patterns like "5 days in Tokyo" or "Tokyo for 3 days"
+// Helper to parse duration from description (destination will be extracted by AI)
+function parseDuration(description: string): number {
   const daysMatch = description.match(/(\d+)\s*days?/i);
-  const duration = daysMatch ? parseInt(daysMatch[1], 10) : 3;
-  
-  // Common city -> country mapping
-  const cityCountryMap: Record<string, string> = {
-    'tokyo': 'Japan', 'kyoto': 'Japan', 'osaka': 'Japan',
-    'paris': 'France', 'london': 'UK', 'rome': 'Italy',
-    'bangkok': 'Thailand', 'singapore': 'Singapore',
-    'new york': 'USA', 'los angeles': 'USA', 'san francisco': 'USA',
-    'bali': 'Indonesia', 'seoul': 'South Korea',
-  };
-  
-  // Try to extract city name
-  let destination = 'Unknown';
-  let country = 'Unknown';
-  
-  const lowerDesc = description.toLowerCase();
-  for (const [city, countryName] of Object.entries(cityCountryMap)) {
-    if (lowerDesc.includes(city)) {
-      destination = city.charAt(0).toUpperCase() + city.slice(1);
-      country = countryName;
-      break;
+  return daysMatch ? parseInt(daysMatch[1], 10) : 3;
+}
+
+// Simple helper to extract destination(s) for display purposes
+// The actual destination will be determined by AI
+function extractBasicDestination(description: string): string {
+  if (!description.trim()) return '';
+
+  // Handle multi-city patterns first: "X to Y", "X and Y", "X & Y"
+  const multiCityPatterns = [
+    /([A-Za-z][A-Za-z\s]*?)\s+to\s+([A-Za-z][A-Za-z\s]*?)(?:\s+for|\s+\d|\.|,|$)/i,
+    /([A-Za-z][A-Za-z\s]*?)\s+(?:and|&)\s+([A-Za-z][A-Za-z\s]*?)(?:\s+for|\s+\d|\.|,|$)/i,
+    /from\s+([A-Za-z][A-Za-z\s]*?)\s+to\s+([A-Za-z][A-Za-z\s]*?)(?:\s|$)/i,
+  ];
+
+  for (const pattern of multiCityPatterns) {
+    const match = description.match(pattern);
+    if (match) {
+      const city1 = match[1].trim().split(' ').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      ).join(' ');
+      const city2 = match[2].trim().split(' ').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      ).join(' ');
+      return `${city1} to ${city2}`;
     }
   }
-  
-  // Fallback: try to find "in [City]" pattern
-  if (destination === 'Unknown') {
-    const inMatch = description.match(/in\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
-    if (inMatch) {
-      destination = inMatch[1];
+
+  // Try single destination patterns
+  const singlePatterns = [
+    /(?:to|in|at|visiting)\s+([A-Za-z][A-Za-z\s]+?)(?:\s+for|\s+\d|\.|,|$)/i,
+  ];
+
+  for (const pattern of singlePatterns) {
+    const match = description.match(pattern);
+    if (match) {
+      return match[1].trim().split(' ').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      ).join(' ');
     }
   }
-  
-  return { destination, country, duration };
+
+  // If no pattern matches, clean and use the description itself
+  const cleaned = description
+    .replace(/\d+\s*days?/gi, '')
+    .replace(/\b(trip|travel|vacation|holiday|visit|visiting|going|planning|for|the|a|an)\b/gi, '')
+    .trim();
+
+  if (cleaned.length > 0 && cleaned.length < 100) {
+    return cleaned.split(' ').map(word =>
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+  }
+
+  return description.trim();
 }
 
 export default function CreatePage() {
@@ -108,7 +129,7 @@ export default function CreatePage() {
 
         const { data, error } = await api.extractPlacesFromImage(
           base64,
-          parseDescription(tripDescription).destination
+          extractBasicDestination(tripDescription) || undefined
         );
 
         if (error) throw error;
@@ -147,7 +168,7 @@ export default function CreatePage() {
     try {
       const { data, error } = await api.extractPlacesFromUrl(
         urlInput,
-        parseDescription(tripDescription).destination
+        extractBasicDestination(tripDescription) || undefined
       );
 
       if (error) throw error;
@@ -183,13 +204,13 @@ export default function CreatePage() {
     handleGenerateTrip([], days);
   };
 
-  const handleGenerateTrip = async (aiPlaces: AISuggestion[], days?: number) => {
+  const handleGenerateTrip = async (aiPlaces: AISuggestion[], days?: number, resolvedDestination?: string) => {
     setStep('generating');
-    
-    // Parse user description
-    const parsed = parseDescription(tripDescription);
-    const finalDuration = days || parsed.duration;
-    
+
+    // Use resolved destination from AI or extract from description
+    const destination = resolvedDestination || extractBasicDestination(tripDescription) || tripDescription.trim();
+    const finalDuration = days || parseDuration(tripDescription);
+
     // Combine imported and AI-selected places into PlaceInput objects
     const importedPlaceInputs: PlaceInput[] = extractedPlaces
       .filter(p => p.selected)
@@ -201,7 +222,7 @@ export default function CreatePage() {
         tips: p.tips,
         source: 'user' as const,
       }));
-    
+
     const aiPlaceInputs: PlaceInput[] = aiPlaces.map(p => ({
       name: p.name,
       category: p.category || 'attraction',
@@ -209,20 +230,20 @@ export default function CreatePage() {
       source: 'ai' as const,
       confidence: p.confidence,
     }));
-    
+
     const allPlaces = [...importedPlaceInputs, ...aiPlaceInputs];
-    
+
     // Create title from description or destination
-    const title = tripDescription.length > 50 
-      ? `${finalDuration} Days in ${parsed.destination}`
-      : tripDescription || `Trip to ${parsed.destination}`;
-    
+    const title = tripDescription.length > 50
+      ? `${finalDuration} Days in ${destination}`
+      : tripDescription || `Trip to ${destination}`;
+
     try {
       createTripWithPlaces.mutate(
         {
           title,
-          destination: parsed.destination,
-          country: parsed.country,
+          destination: destination,
+          country: 'Unknown', // Will be resolved later or by user
           duration: finalDuration,
           places: allPlaces,
         },
@@ -243,14 +264,18 @@ export default function CreatePage() {
   };
 
   const handleImportAndContinue = () => {
-    if (tripDescription.trim()) {
-      setStep('personalization');
-    } else {
-      toast.error('Please describe your trip or import content first');
+    if (!tripDescription.trim()) {
+      toast.error('Please describe your trip first (e.g., "melaka to johor" or "5 days in Tokyo")');
+      return;
     }
+
+    // Any non-empty description is valid - let the AI figure out the destination
+    setStep('personalization');
   };
 
-  const parsed = parseDescription(tripDescription);
+  // Extract basic destination for display (AI will resolve the actual destination)
+  const displayDestination = extractBasicDestination(tripDescription);
+  const tripDuration = parseDuration(tripDescription);
   const importedPlaceNames = extractedPlaces.filter(p => p.selected).map(p => p.name);
 
   return (
@@ -351,9 +376,9 @@ export default function CreatePage() {
 
       {step === 'personalization' && (
         <PersonalizationChatInterface
-          destination={parsed.destination}
+          destination={displayDestination || tripDescription.trim()}
           importedPlaces={importedPlaceNames}
-          duration={parsed.duration}
+          duration={tripDuration}
           onBack={() => setStep(extractedPlaces.length > 0 ? 'review-extracted' : 'hero')}
           onComplete={handlePersonalizationComplete}
           onSkip={handlePersonalizationSkip}

@@ -34,3 +34,4 @@ dist-ssr
 
 # Files for testing purposes
 listmodel.md
+.env*.local

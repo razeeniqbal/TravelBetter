@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SearchBar } from '@/components/home/SearchBar';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Star, MapPin } from 'lucide-react';
+import { Star, MapPin, Loader2 } from 'lucide-react';
 import { sampleTrips } from '@/data/sampleTrips';
+import { usePlaces } from '@/hooks/usePlaces';
+import { usePublicTrips } from '@/hooks/usePublicTrips';
 
 export default function SearchPage() {
   const navigate = useNavigate();
@@ -13,12 +15,37 @@ export default function SearchPage() {
   const initialQuery = searchParams.get('q') || '';
   const [searchQuery, setSearchQuery] = useState(initialQuery);
 
-  // Get places from sample trips for display
-  const allPlaces = sampleTrips.flatMap(trip => 
-    trip.itinerary.flatMap(day => 
-      day.places.map(place => ({ ...place, tripTitle: trip.title, author: trip.author }))
-    )
-  );
+  // Fetch real data from database
+  const { data: dbPlaces = [], isLoading: isLoadingPlaces } = usePlaces();
+  const { data: publicTrips = [], isLoading: isLoadingTrips } = usePublicTrips(20);
+
+  // Get places from real trips, fall back to sample trips if none
+  const allPlaces = useMemo(() => {
+    // If we have real public trips with places, use those
+    if (publicTrips.length > 0) {
+      return publicTrips.flatMap(trip =>
+        trip.itinerary.flatMap(day =>
+          day.places.map(place => ({ ...place, tripTitle: trip.title, author: trip.author }))
+        )
+      );
+    }
+    // If we have DB places, use those
+    if (dbPlaces.length > 0) {
+      return dbPlaces.map(place => ({
+        ...place,
+        tripTitle: 'Explore',
+        author: { id: '', name: 'TravelBetter', username: 'travelbetter', avatar: '', bio: '', tripsCreated: 0, tripsRemixed: 0, countriesVisited: 0, joinedAt: '' }
+      }));
+    }
+    // Fall back to sample data
+    return sampleTrips.flatMap(trip =>
+      trip.itinerary.flatMap(day =>
+        day.places.map(place => ({ ...place, tripTitle: trip.title, author: trip.author }))
+      )
+    );
+  }, [publicTrips, dbPlaces]);
+
+  const isLoading = isLoadingPlaces || isLoadingTrips;
 
   // Filter based on search query
   const filteredPlaces = searchQuery 
@@ -43,8 +70,14 @@ export default function SearchPage() {
         />
       </div>
 
+      {isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
       {/* Top Result */}
-      {featuredPlace && (
+      {!isLoading && featuredPlace && (
         <div className="px-4 py-4">
           <h2 className="mb-3 font-semibold text-foreground">Top Result</h2>
           <Card 
@@ -85,6 +118,7 @@ export default function SearchPage() {
       )}
 
       {/* Nearby Favorites */}
+      {!isLoading && nearbyPlaces.length > 0 && (
       <div className="px-4 py-4">
         <h2 className="mb-3 font-semibold text-foreground">Nearby Favorites</h2>
         <div className="no-scrollbar flex gap-3 overflow-x-auto">
@@ -128,6 +162,7 @@ export default function SearchPage() {
           ))}
         </div>
       </div>
+      )}
 
       <BottomNav />
     </div>

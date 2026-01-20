@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getGeminiUrl, parseGeminiJson } from './_shared/gemini.js';
 
 interface ExtractedPlace {
   name: string;
@@ -88,7 +89,7 @@ If this is a travel vlog or guide about a specific city, include the most popula
 Respond ONLY with valid JSON, no markdown or extra text.`;
 
     // Call Google Gemini API
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`, {
+    const response = await fetch(getGeminiUrl(GOOGLE_API_KEY), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -130,9 +131,9 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
     }
 
     // Parse the JSON response
-    let result;
+    let result: { places?: ExtractedPlace[]; summary?: string; sourceType?: string };
     try {
-      result = JSON.parse(responseText);
+      result = parseGeminiJson(responseText);
     } catch (parseError) {
       console.error('Failed to parse AI response:', responseText);
       return res.status(200).json({ error: 'Failed to parse AI response', places: [] });

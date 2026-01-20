@@ -5,13 +5,14 @@ import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Mic, Layers, Navigation, Star, Clock, Plus } from 'lucide-react';
+import { Mic, Star, Clock, Plus } from 'lucide-react';
 import { sampleTrips } from '@/data/sampleTrips';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { usePlaces } from '@/hooks/usePlaces';
 import { Place } from '@/types/trip';
+import { Map, MapControls, MapMarker, MarkerContent, MarkerTooltip, MapPopup } from '@/components/ui/map';
 
 const categories = [
   { id: 'all', label: 'All', icon: '📍' },
@@ -45,9 +46,55 @@ export default function ExplorePage() {
     return samplePlaces.filter(p => p.category === activeCategory);
   }, [dbPlaces, samplePlaces, activeCategory]);
   
-  const displayPlace = selectedPlace 
-    ? allPlaces.find(p => p.id === selectedPlace) 
-    : allPlaces[0];
+  const selectedMapPlace = selectedPlace
+    ? allPlaces.find(p => p.id === selectedPlace)
+    : null;
+
+  const displayPlace = selectedMapPlace || allPlaces[0];
+
+  const placesWithCoords = useMemo(
+    () => allPlaces.filter((place) => place.coordinates),
+    [allPlaces]
+  );
+
+  const mapCenter = useMemo(() => {
+    if (placesWithCoords.length === 0) return [0, 0] as [number, number];
+    const totals = placesWithCoords.reduce(
+      (acc, place) => {
+        const coords = place.coordinates!;
+        return {
+          lat: acc.lat + coords.lat,
+          lng: acc.lng + coords.lng,
+        };
+      },
+      { lat: 0, lng: 0 }
+    );
+    return [
+      totals.lng / placesWithCoords.length,
+      totals.lat / placesWithCoords.length,
+    ] as [number, number];
+  }, [placesWithCoords]);
+
+  const mapZoom = placesWithCoords.length > 0 ? 12 : 1;
+
+  const getMarkerClass = (category?: string) => {
+    switch (category) {
+      case 'food':
+        return 'bg-travel-food';
+      case 'culture':
+        return 'bg-travel-culture';
+      case 'nature':
+        return 'bg-travel-nature';
+      case 'shop':
+        return 'bg-travel-shop';
+      case 'night':
+        return 'bg-travel-night';
+      case 'photo':
+        return 'bg-travel-photo';
+      default:
+        return 'bg-primary';
+    }
+  };
 
   const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
 
@@ -117,66 +164,45 @@ export default function ExplorePage() {
         </div>
       </div>
 
-      {/* Map Placeholder */}
-      <div 
-        className="h-[60vh] w-full"
-        style={{
-          background: `
-            linear-gradient(90deg, hsl(var(--muted)) 1px, transparent 1px),
-            linear-gradient(hsl(var(--muted)) 1px, transparent 1px),
-            hsl(var(--muted-foreground) / 0.03)
-          `,
-          backgroundSize: '30px 30px',
-        }}
-      >
-        {/* Floating Map Controls */}
-        <div className="absolute right-4 top-40 flex flex-col gap-2">
-          <Button variant="outline" size="icon" className="h-10 w-10 rounded-full bg-card shadow-lg">
-            <Layers className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon" className="h-10 w-10 rounded-full bg-card shadow-lg">
-            <Navigation className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {/* Map Markers Placeholder */}
-        <div className="absolute inset-0 flex items-center justify-center pt-20">
-          <div className="relative">
-            {/* Category Markers */}
-            <div className="flex gap-12">
-              {allPlaces.slice(0, 3).map((place, idx) => (
-                <div 
-                  key={place.id} 
-                  className="flex flex-col items-center cursor-pointer"
-                  onClick={() => {
-                    setSelectedPlace(place.id);
-                    navigate(`/place/${place.id}`);
-                  }}
-                >
-                  <div className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-transform hover:scale-110",
-                    idx === 0 ? "bg-travel-food" : idx === 1 ? "bg-travel-culture" : "bg-travel-nature"
-                  )}>
-                    {idx === 0 ? '🍜' : idx === 1 ? '🏛️' : '🌳'}
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {/* Selected Place Marker */}
-            {displayPlace && (
-              <div 
-                className="absolute left-1/2 top-16 -translate-x-1/2 cursor-pointer"
-                onClick={() => navigate(`/place/${displayPlace.id}`)}
+      {/* Map */}
+      <div className="h-[60vh] w-full">
+        <Map center={mapCenter} zoom={mapZoom} minZoom={1} maxZoom={16}>
+          {placesWithCoords.map((place, index) => (
+            <MapMarker
+              key={place.id}
+              longitude={place.coordinates!.lng}
+              latitude={place.coordinates!.lat}
+              onClick={() => setSelectedPlace(place.id)}
+            >
+              <MarkerContent
+                className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold text-white shadow-lg transition-transform",
+                  getMarkerClass(place.category),
+                  selectedPlace === place.id && "ring-2 ring-white/80"
+                )}
               >
-                <div className="rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg">
-                  {displayPlace.name}
-                </div>
-                <div className="mx-auto h-4 w-0.5 bg-primary" />
+                {index + 1}
+              </MarkerContent>
+              <MarkerTooltip>{place.name}</MarkerTooltip>
+            </MapMarker>
+          ))}
+
+          {selectedMapPlace?.coordinates && (
+            <MapPopup
+              longitude={selectedMapPlace.coordinates.lng}
+              latitude={selectedMapPlace.coordinates.lat}
+              closeButton
+              onClose={() => setSelectedPlace(null)}
+            >
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">{selectedMapPlace.name}</p>
+                <p className="text-xs text-muted-foreground">{selectedMapPlace.category}</p>
               </div>
-            )}
-          </div>
-        </div>
+            </MapPopup>
+          )}
+
+          <MapControls showZoom position="bottom-right" />
+        </Map>
       </div>
 
       {/* Bottom Sheet */}

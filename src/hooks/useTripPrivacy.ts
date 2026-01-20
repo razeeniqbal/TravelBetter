@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { AUTH_DISABLED } from '@/lib/flags';
 
 export function useTripPrivacy(tripId: string) {
   const queryClient = useQueryClient();
@@ -8,6 +9,9 @@ export function useTripPrivacy(tripId: string) {
 
   return useMutation({
     mutationFn: async (isPublic: boolean) => {
+      if (AUTH_DISABLED) {
+        return isPublic;
+      }
       const { error } = await supabase
         .from('trips')
         .update({ is_public: isPublic })

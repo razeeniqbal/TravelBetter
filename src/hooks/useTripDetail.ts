@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Trip, DayItinerary, Place, PlaceCategory, PlaceSource } from '@/types/trip';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { getGuestTripById } from '@/lib/guestTrips';
 
 interface DbTrip {
   id: string;
@@ -92,6 +94,9 @@ export function useTripDetail(tripId: string | undefined) {
     queryKey: ['trip-detail', tripId],
     queryFn: async (): Promise<Trip | null> => {
       if (!tripId) return null;
+      if (AUTH_DISABLED) {
+        return getGuestTripById(tripId) || null;
+      }
 
       // Fetch trip with author profile
       const { data: tripData, error: tripError } = await supabase

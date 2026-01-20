@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { GUEST_USER_ID } from '@/lib/guestTrips';
 
 interface AuthContextType {
   user: User | null;
@@ -18,8 +19,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const guestUser = useMemo(() => {
+    if (!AUTH_DISABLED) return null;
+    return {
+      id: GUEST_USER_ID,
+      email: 'guest@local',
+      app_metadata: {},
+      user_metadata: { full_name: 'Guest', username: 'guest' },
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+    } as User;
+  }, []);
 
   useEffect(() => {
+    if (AUTH_DISABLED) {
+      setUser(guestUser);
+      setSession(null);
+      setLoading(false);
+      return;
+    }
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
@@ -40,6 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, username: string) => {
+    if (AUTH_DISABLED) {
+      return { error: null };
+    }
     const redirectUrl = `${window.location.origin}/`;
     
     const { error } = await supabase.auth.signUp({
@@ -57,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
+    if (AUTH_DISABLED) {
+      return { error: null };
+    }
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -65,6 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if (AUTH_DISABLED) {
+      return;
+    }
     await supabase.auth.signOut();
   };
 

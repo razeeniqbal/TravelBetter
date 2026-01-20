@@ -4,6 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Trip } from '@/types/trip';
 import { isValidUUID } from '@/lib/utils';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { GUEST_AUTHOR, createGuestTripId, saveGuestTrip } from '@/lib/guestTrips';
 
 export function useRemixTrip() {
   const queryClient = useQueryClient();
@@ -12,6 +14,20 @@ export function useRemixTrip() {
 
   return useMutation({
     mutationFn: async (originalTrip: Trip): Promise<string> => {
+      if (AUTH_DISABLED) {
+        const newTripId = createGuestTripId();
+        const now = new Date().toISOString();
+        const remixedTrip: Trip = {
+          ...originalTrip,
+          id: newTripId,
+          title: `${originalTrip.title} (Remix)`,
+          author: GUEST_AUTHOR,
+          createdAt: now,
+          remixedFrom: { tripId: originalTrip.id, authorName: originalTrip.author.name },
+        };
+        saveGuestTrip(remixedTrip);
+        return newTripId;
+      }
       if (!user?.id) throw new Error('Not authenticated');
 
       // 1. Create the new trip as a remix

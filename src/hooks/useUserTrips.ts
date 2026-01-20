@@ -2,6 +2,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { AUTH_DISABLED } from '@/lib/flags';
+import {
+  GUEST_AUTHOR,
+  addGuestDay,
+  addGuestPlaceToDay,
+  createGuestPlaceId,
+  createGuestTripId,
+  getGuestTripById,
+  getGuestTrips,
+  makeGuestDayId,
+  parseGuestDayId,
+  saveGuestTrip,
+} from '@/lib/guestTrips';
+import type { DayItinerary as TripDay, Place, Trip } from '@/types/trip';
 
 export interface UserTrip {
   id: string;
@@ -26,8 +40,20 @@ export function useUserTrips() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['user-trips', user?.id],
+    queryKey: ['user-trips', AUTH_DISABLED ? 'guest' : user?.id],
     queryFn: async () => {
+      if (AUTH_DISABLED) {
+        return getGuestTrips().map(trip => ({
+          id: trip.id,
+          title: trip.title,
+          destination: trip.destination,
+          country: trip.country,
+          duration: trip.duration,
+          cover_image: trip.coverImage,
+          created_at: trip.createdAt,
+          remixed_from_id: trip.remixedFrom?.tripId || null,
+        })) as UserTrip[];
+      }
       if (!user?.id) return [];
       
       const { data, error } = await supabase
@@ -39,15 +65,26 @@ export function useUserTrips() {
       if (error) throw error;
       return data as UserTrip[];
     },
-    enabled: !!user?.id,
+    enabled: AUTH_DISABLED || !!user?.id,
   });
 }
 
 export function useTripDays(tripId: string | null) {
   return useQuery({
-    queryKey: ['trip-days', tripId],
+    queryKey: ['trip-days', AUTH_DISABLED ? `guest-${tripId}` : tripId],
     queryFn: async () => {
       if (!tripId) return [];
+      if (AUTH_DISABLED) {
+        const trip = getGuestTripById(tripId);
+        if (!trip) return [];
+        return trip.itinerary.map(day => ({
+          id: makeGuestDayId(tripId, day.day),
+          trip_id: tripId,
+          day_number: day.day,
+          title: day.title || null,
+          notes: day.notes || null,
+        })) as DayItinerary[];
+      }
       
       const { data, error } = await supabase
         .from('day_itineraries')
@@ -77,6 +114,24 @@ export function useAddPlaceToItinerary() {
       placeId: string;
       placeName: string;
     }) => {
+      if (AUTH_DISABLED) {
+        const parsed = parseGuestDayId(dayItineraryId);
+        if (!parsed) {
+          throw new Error('Invalid day');
+        }
+
+        const place: Place = {
+          id: placeId,
+          name: placeName,
+          category: 'culture',
+          source: 'user',
+        };
+
+        const updated = addGuestPlaceToDay(parsed.tripId, parsed.dayNumber, place);
+        if (!updated) throw new Error('Trip not found');
+        return { dayItineraryId, placeId };
+      }
+
       if (!user?.id) throw new Error('Not authenticated');
       
       // Get current max position in this day
@@ -158,6 +213,17 @@ export function useCreateDayItinerary() {
 
   return useMutation({
     mutationFn: async ({ tripId, dayNumber }: { tripId: string; dayNumber: number }) => {
+      if (AUTH_DISABLED) {
+        const result = addGuestDay(tripId);
+        if (!result) throw new Error('Trip not found');
+        return {
+          id: makeGuestDayId(tripId, result.day.day),
+          trip_id: tripId,
+          day_number: result.day.day,
+          title: result.day.title || null,
+          notes: result.day.notes || null,
+        };
+      }
       const { data, error } = await supabase
         .from('day_itineraries')
         .insert({
@@ -199,6 +265,40 @@ export function useCreateTrip() {
 
   return useMutation({
     mutationFn: async (input: CreateTripInput) => {
+      if (AUTH_DISABLED) {
+        const tripId = createGuestTripId();
+        const createdAt = new Date().toISOString();
+        const itinerary: TripDay[] = Array.from({ length: input.duration }, (_, index) => ({
+          day: index + 1,
+          title: `Day ${index + 1}`,
+          places: [],
+        }));
+        const trip: Trip = {
+          id: tripId,
+          title: input.title,
+          destination: input.destination,
+          country: input.country,
+          duration: input.duration,
+          coverImage: 'https://images.unsplash.com/photo-1480796927426-f609979314bd?w=800',
+          itinerary,
+          author: GUEST_AUTHOR,
+          tags: [],
+          remixCount: 0,
+          viewCount: 0,
+          createdAt,
+        };
+        saveGuestTrip(trip);
+        return {
+          trip,
+          firstDay: {
+            id: makeGuestDayId(tripId, 1),
+            trip_id: tripId,
+            day_number: 1,
+            title: 'Day 1',
+            notes: null,
+          },
+        };
+      }
       if (!user?.id) throw new Error('Not authenticated');
       
       // Create the trip
@@ -279,6 +379,62 @@ export function useCreateTripWithPlaces() {
 
   return useMutation({
     mutationFn: async (input: CreateTripWithPlacesInput) => {
+      if (AUTH_DISABLED) {
+        const tripId = createGuestTripId();
+        const createdAt = new Date().toISOString();
+        const dayCount = Math.max(1, input.duration);
+        const itinerary: TripDay[] = Array.from({ length: dayCount }, (_, index) => ({
+          day: index + 1,
+          title: `Day ${index + 1}`,
+          places: [],
+        }));
+
+        const places: Place[] = input.places.map((place, index) => ({
+          id: createGuestPlaceId(tripId, index),
+          name: place.name,
+          nameLocal: place.nameLocal,
+          category: place.category || 'culture',
+          description: place.description,
+          duration: place.duration,
+          cost: place.cost,
+          tips: place.tips,
+          confidence: place.confidence,
+          source: place.source,
+        }));
+
+        const placesPerDay = Math.ceil(places.length / dayCount);
+        places.forEach((place, index) => {
+          const dayIndex = Math.min(Math.floor(index / placesPerDay), itinerary.length - 1);
+          itinerary[dayIndex].places.push(place);
+        });
+
+        const trip: Trip = {
+          id: tripId,
+          title: input.title,
+          destination: input.destination,
+          country: input.country,
+          duration: dayCount,
+          coverImage: 'https://images.unsplash.com/photo-1480796927426-f609979314bd?w=800',
+          itinerary,
+          author: GUEST_AUTHOR,
+          tags: [],
+          remixCount: 0,
+          viewCount: 0,
+          createdAt,
+        };
+
+        saveGuestTrip(trip);
+        return {
+          trip,
+          days: itinerary.map(day => ({
+            id: makeGuestDayId(tripId, day.day),
+            trip_id: tripId,
+            day_number: day.day,
+            title: day.title || null,
+            notes: day.notes || null,
+          })),
+        };
+      }
       if (!user?.id) throw new Error('Not authenticated');
       
       // 1. Create the trip

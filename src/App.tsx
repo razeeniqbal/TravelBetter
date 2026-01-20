@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RequireAuth } from "@/components/shared/RequireAuth";
+import { AUTH_DISABLED } from "@/lib/flags";
 import HomePage from "./pages/HomePage";
 import TripDetailPage from "./pages/TripDetailPage";
 import CreatePage from "./pages/CreatePage";
@@ -19,8 +20,6 @@ import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
-const authDisabled = import.meta.env.VITE_DISABLE_AUTH === 'true';
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
@@ -30,7 +29,7 @@ const App = () => (
           <Sonner />
           <Routes>
             <Route path="/" element={<HomePage />} />
-            {authDisabled ? (
+            {AUTH_DISABLED ? (
               <Route path="/auth" element={<Navigate to="/" replace />} />
             ) : (
               <Route path="/auth" element={<AuthPage />} />

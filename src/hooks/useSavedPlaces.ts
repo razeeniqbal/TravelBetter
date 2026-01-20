@@ -3,13 +3,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { isValidUUID } from '@/lib/utils';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { getGuestSavedPlaceIds, toggleGuestSavedPlace } from '@/lib/guestTrips';
 
 export function useSavedPlaces() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['saved-places', user?.id],
+    queryKey: ['saved-places', AUTH_DISABLED ? 'guest' : user?.id],
     queryFn: async () => {
+      if (AUTH_DISABLED) {
+        return getGuestSavedPlaceIds();
+      }
       if (!user?.id) return [];
       
       const { data, error } = await supabase
@@ -20,7 +25,7 @@ export function useSavedPlaces() {
       if (error) throw error;
       return data.map(item => item.place_id);
     },
-    enabled: !!user?.id,
+    enabled: AUTH_DISABLED || !!user?.id,
   });
 }
 
@@ -46,6 +51,10 @@ export function useToggleSavePlace() {
       isSaved: boolean;
       placeData?: PlaceData;
     }) => {
+      if (AUTH_DISABLED) {
+        const nextSaved = toggleGuestSavedPlace(placeId);
+        return { placeId, isSaved: nextSaved };
+      }
       if (!user?.id) throw new Error('Not authenticated');
       
       let actualPlaceId = placeId;
@@ -91,7 +100,7 @@ export function useToggleSavePlace() {
       return { placeId: actualPlaceId, isSaved: !isSaved };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['saved-places', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['saved-places', AUTH_DISABLED ? 'guest' : user?.id] });
       toast({
         title: result.isSaved ? 'Place saved!' : 'Place removed',
         description: result.isSaved 

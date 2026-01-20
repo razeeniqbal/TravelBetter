@@ -21,6 +21,7 @@ import { useTripEdit } from '@/hooks/useTripEdit';
 import { useRemixTrip } from '@/hooks/useRemixTrip';
 import { useCreateDayItinerary } from '@/hooks/useUserTrips';
 import { supabase } from '@/integrations/supabase/client';
+import { AUTH_DISABLED } from '@/lib/flags';
 
 export default function TripDetailPage() {
   const { tripId } = useParams();
@@ -135,12 +136,14 @@ export default function TripDetailPage() {
         tripId, 
         dayNumber: nextDayNumber 
       });
-      
-      // Update trip duration
-      await supabase
-        .from('trips')
-        .update({ duration: nextDayNumber })
-        .eq('id', tripId);
+
+      if (!AUTH_DISABLED) {
+        // Update trip duration
+        await supabase
+          .from('trips')
+          .update({ duration: nextDayNumber })
+          .eq('id', tripId);
+      }
       
       // Invalidate queries
       await queryClient.invalidateQueries({ queryKey: ['trip-detail', tripId] });
@@ -291,6 +294,7 @@ export default function TripDetailPage() {
         <MapPlaceholder 
           destination={trip.destination} 
           placesCount={currentDayItinerary?.places.length || 0} 
+          places={currentDayItinerary?.places || []}
         />
       </div>
 

@@ -2,13 +2,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { getGuestSavedTripIds, toggleGuestSavedTrip } from '@/lib/guestTrips';
 
 export function useSavedTrips() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['saved-trips', user?.id],
+    queryKey: ['saved-trips', AUTH_DISABLED ? 'guest' : user?.id],
     queryFn: async () => {
+      if (AUTH_DISABLED) {
+        return getGuestSavedTripIds();
+      }
       if (!user?.id) return [];
       
       const { data, error } = await supabase
@@ -19,7 +24,7 @@ export function useSavedTrips() {
       if (error) throw error;
       return data.map(item => item.trip_id);
     },
-    enabled: !!user?.id,
+    enabled: AUTH_DISABLED || !!user?.id,
   });
 }
 
@@ -30,6 +35,10 @@ export function useToggleSaveTrip() {
 
   return useMutation({
     mutationFn: async ({ tripId, isSaved }: { tripId: string; isSaved: boolean }) => {
+      if (AUTH_DISABLED) {
+        const nextSaved = toggleGuestSavedTrip(tripId);
+        return { tripId, isSaved: nextSaved };
+      }
       if (!user?.id) throw new Error('Not authenticated');
       
       if (isSaved) {
@@ -51,7 +60,7 @@ export function useToggleSaveTrip() {
       return { tripId, isSaved: !isSaved };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['saved-trips', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['saved-trips', AUTH_DISABLED ? 'guest' : user?.id] });
       toast({
         title: result.isSaved ? 'Trip saved!' : 'Trip removed',
         description: result.isSaved 

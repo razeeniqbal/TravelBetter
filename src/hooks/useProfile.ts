@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { GUEST_USER_ID } from '@/lib/guestTrips';
 
 export interface Profile {
   id: string;
@@ -19,8 +21,22 @@ export function useProfile() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['profile', user?.id],
+    queryKey: ['profile', AUTH_DISABLED ? 'guest' : user?.id],
     queryFn: async () => {
+      if (AUTH_DISABLED) {
+        return {
+          id: GUEST_USER_ID,
+          username: 'guest',
+          full_name: 'Guest',
+          avatar_url: null,
+          bio: null,
+          countries_visited: 0,
+          trips_created: 0,
+          trips_remixed: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as Profile;
+      }
       if (!user?.id) return null;
       
       const { data, error } = await supabase
@@ -32,7 +48,7 @@ export function useProfile() {
       if (error) throw error;
       return data as Profile | null;
     },
-    enabled: !!user?.id,
+    enabled: AUTH_DISABLED || !!user?.id,
   });
 }
 
@@ -42,6 +58,20 @@ export function useUpdateProfile() {
 
   return useMutation({
     mutationFn: async (updates: Partial<Profile>) => {
+      if (AUTH_DISABLED) {
+        return {
+          id: GUEST_USER_ID,
+          username: 'guest',
+          full_name: updates.full_name || 'Guest',
+          avatar_url: updates.avatar_url || null,
+          bio: updates.bio || null,
+          countries_visited: updates.countries_visited || 0,
+          trips_created: updates.trips_created || 0,
+          trips_remixed: updates.trips_remixed || 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as Profile;
+      }
       if (!user?.id) throw new Error('Not authenticated');
       
       const { data, error } = await supabase
@@ -55,7 +85,7 @@ export function useUpdateProfile() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['profile', AUTH_DISABLED ? 'guest' : user?.id] });
     },
   });
 }

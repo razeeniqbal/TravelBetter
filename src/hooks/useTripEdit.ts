@@ -3,6 +3,8 @@ import { Place, DayItinerary } from '@/types/trip';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { getGuestTripById, updateGuestTrip } from '@/lib/guestTrips';
 
 interface UseTripEditProps {
   tripId: string;
@@ -105,6 +107,16 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
   const saveChanges = useCallback(async () => {
     setIsSaving(true);
     try {
+      if (AUTH_DISABLED) {
+        const trip = getGuestTripById(tripId);
+        if (!trip) throw new Error('Trip not found');
+        updateGuestTrip({ ...trip, itinerary });
+        queryClient.invalidateQueries({ queryKey: ['trip-detail', tripId] });
+        toast.success('Changes saved successfully!');
+        setIsEditMode(false);
+        return;
+      }
+
       // Fetch day itinerary IDs
       const { data: daysData, error: daysError } = await supabase
         .from('day_itineraries')

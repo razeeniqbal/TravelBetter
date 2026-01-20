@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { AUTH_DISABLED } from '@/lib/flags';
 
 interface RequireAuthProps {
   children: ReactNode;
@@ -9,9 +10,7 @@ interface RequireAuthProps {
 export function RequireAuth({ children }: RequireAuthProps) {
   const { user, loading } = useAuth();
   const location = useLocation();
-  const authDisabled = import.meta.env.VITE_DISABLE_AUTH === 'true';
-
-  if (authDisabled) {
+  if (AUTH_DISABLED) {
     return <>{children}</>;
   }
 

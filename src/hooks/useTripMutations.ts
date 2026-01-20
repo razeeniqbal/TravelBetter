@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { deleteGuestTrip, renameGuestTrip } from '@/lib/guestTrips';
 
 export function useDeleteTrip() {
   const queryClient = useQueryClient();
@@ -10,6 +12,10 @@ export function useDeleteTrip() {
 
   return useMutation({
     mutationFn: async (tripId: string) => {
+      if (AUTH_DISABLED) {
+        deleteGuestTrip(tripId);
+        return tripId;
+      }
       if (!user?.id) throw new Error('Not authenticated');
 
       // Delete cascade: itinerary_places -> day_itineraries -> trips
@@ -76,6 +82,10 @@ export function useBatchDeleteTrips() {
 
   return useMutation({
     mutationFn: async (tripIds: string[]) => {
+      if (AUTH_DISABLED) {
+        tripIds.forEach(deleteGuestTrip);
+        return tripIds;
+      }
       if (!user?.id) throw new Error('Not authenticated');
 
       for (const tripId of tripIds) {
@@ -142,6 +152,10 @@ export function useRenameTrip() {
 
   return useMutation({
     mutationFn: async ({ tripId, newTitle }: { tripId: string; newTitle: string }) => {
+      if (AUTH_DISABLED) {
+        renameGuestTrip(tripId, newTitle);
+        return { tripId, newTitle };
+      }
       if (!user?.id) throw new Error('Not authenticated');
 
       const { error } = await supabase

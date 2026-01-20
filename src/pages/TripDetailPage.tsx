@@ -294,6 +294,7 @@ export default function TripDetailPage() {
         <MapPlaceholder 
           destination={trip.destination} 
           placesCount={currentDayItinerary?.places.length || 0} 
+          places={currentDayItinerary?.places || []}
         />
       </div>
 

@@ -1,52 +1,66 @@
-import { MapPin, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Map, MapControls, MapMarker, MarkerContent, MarkerTooltip } from '@/components/ui/map';
+import type { Place } from '@/types/trip';
 
 interface MapPlaceholderProps {
   destination?: string;
   placesCount?: number;
+  places?: Place[];
 }
 
-export function MapPlaceholder({ destination = 'Kyoto', placesCount = 4 }: MapPlaceholderProps) {
+function getCenterFromPlaces(places: Place[]) {
+  const withCoords = places.filter((place) => place.coordinates);
+  if (withCoords.length === 0) return [0, 0] as [number, number];
+
+  const totals = withCoords.reduce(
+    (acc, place) => {
+      const coords = place.coordinates!;
+      return {
+        lat: acc.lat + coords.lat,
+        lng: acc.lng + coords.lng,
+      };
+    },
+    { lat: 0, lng: 0 }
+  );
+
+  return [
+    totals.lng / withCoords.length,
+    totals.lat / withCoords.length,
+  ] as [number, number];
+}
+
+export function MapPlaceholder({
+  destination = 'Kyoto',
+  placesCount = 4,
+  places = [],
+}: MapPlaceholderProps) {
+  const placesWithCoords = places.filter((place) => place.coordinates);
+  const center = getCenterFromPlaces(places);
+  const zoom = placesWithCoords.length > 0 ? 12 : 1;
+
   return (
-    <div className="relative overflow-hidden rounded-xl bg-muted">
-      {/* Map Background Pattern */}
-      <div 
-        className="h-40 w-full"
-        style={{
-          background: `
-            linear-gradient(90deg, hsl(var(--muted)) 1px, transparent 1px),
-            linear-gradient(hsl(var(--muted)) 1px, transparent 1px),
-            hsl(var(--muted-foreground) / 0.05)
-          `,
-          backgroundSize: '20px 20px',
-        }}
+    <div className="relative h-40 overflow-hidden rounded-xl bg-muted">
+      <Map
+        center={center}
+        zoom={zoom}
+        minZoom={1}
+        maxZoom={16}
       >
-        {/* Placeholder markers */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="relative">
-            <div className="flex gap-8">
-              <div className="flex flex-col items-center">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg">
-                  <MapPin className="h-4 w-4" />
-                </div>
-                <div className="mt-1 h-2 w-0.5 bg-primary/50" />
-              </div>
-              <div className="flex flex-col items-center">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-travel-food text-white shadow-lg">
-                  <span className="text-xs font-bold">1</span>
-                </div>
-                <div className="mt-1 h-2 w-0.5 bg-travel-food/50" />
-              </div>
-              <div className="flex flex-col items-center">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-travel-culture text-white shadow-lg">
-                  <span className="text-xs font-bold">2</span>
-                </div>
-                <div className="mt-1 h-2 w-0.5 bg-travel-culture/50" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        {placesWithCoords.map((place, index) => (
+          <MapMarker
+            key={place.id}
+            longitude={place.coordinates!.lng}
+            latitude={place.coordinates!.lat}
+          >
+            <MarkerContent className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground shadow-lg">
+              {index + 1}
+            </MarkerContent>
+            <MarkerTooltip>{place.name}</MarkerTooltip>
+          </MapMarker>
+        ))}
+        <MapControls showZoom position="top-right" />
+      </Map>
 
       {/* View on Google Button */}
       <div className="absolute bottom-3 right-3">

@@ -79,7 +79,7 @@ function mapDbPlaceToPlace(dbPlace: DbItineraryPlace): Place {
     cost: place?.cost || undefined,
     rating: place?.rating ? Number(place.rating) : undefined,
     address: place?.address || undefined,
-    coordinates: place?.latitude && place?.longitude 
+    coordinates: place?.latitude != null && place?.longitude != null
       ? { lat: Number(place.latitude), lng: Number(place.longitude) }
       : undefined,
     walkingTimeFromPrevious: dbPlace.walking_time_from_previous || undefined,

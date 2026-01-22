@@ -110,6 +110,8 @@ export interface ExtractedPlace {
   category: string;
   description?: string;
   tips?: string[];
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface ExtractPlacesFromUrlResponse {
@@ -136,6 +138,8 @@ export interface AISuggestion {
   confidence: number;
   reason: string;
   neighborhood?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface GenerateAISuggestionsResponse {

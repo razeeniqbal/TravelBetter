@@ -1,32 +1,82 @@
+import { useEffect, useMemo, useState } from 'react';
+import MapLibreGL from 'maplibre-gl';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Map, MapControls, MapMarker, MarkerContent, MarkerTooltip } from '@/components/ui/map';
+import { Map, MapControls, MapMarker, MapRoute, MarkerContent, MarkerTooltip, useMap } from '@/components/ui/map';
+import { cn } from '@/lib/utils';
 import type { Place } from '@/types/trip';
 
 interface MapPlaceholderProps {
   destination?: string;
   placesCount?: number;
   places?: Place[];
+  className?: string;
+  showOverlays?: boolean;
+  controlsPosition?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
 }
 
-function getCenterFromPlaces(places: Place[]) {
-  const withCoords = places.filter((place) => place.coordinates);
-  if (withCoords.length === 0) return [0, 0] as [number, number];
+function MapAutoFit({
+  resolvedPlaces,
+  routeCoordinates,
+}: {
+  resolvedPlaces: Array<{ coords: { lat: number; lng: number } }>;
+  routeCoordinates: [number, number][];
+}) {
+  const { map, isLoaded } = useMap();
 
-  const totals = withCoords.reduce(
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+    if (routeCoordinates.length < 2 && resolvedPlaces.length === 0) return;
+
+    map.resize();
+
+    if (routeCoordinates.length > 1) {
+      const bounds = new MapLibreGL.LngLatBounds();
+      routeCoordinates.forEach((coord) => bounds.extend(coord));
+      map.fitBounds(bounds, {
+        padding: { top: 56, bottom: 72, left: 32, right: 32 },
+        duration: 500,
+        maxZoom: 14,
+      });
+      return;
+    }
+
+    if (resolvedPlaces.length > 1) {
+      const bounds = new MapLibreGL.LngLatBounds();
+      resolvedPlaces.forEach(({ coords }) => bounds.extend([coords.lng, coords.lat]));
+      map.fitBounds(bounds, {
+        padding: { top: 56, bottom: 72, left: 32, right: 32 },
+        duration: 500,
+        maxZoom: 14,
+      });
+      return;
+    }
+
+    if (resolvedPlaces.length === 1) {
+      const { coords } = resolvedPlaces[0];
+      map.easeTo({ center: [coords.lng, coords.lat], zoom: 13, duration: 400 });
+    }
+  }, [isLoaded, map, resolvedPlaces, routeCoordinates]);
+
+  return null;
+}
+
+function getCenterFromCoordinates(points: Array<{ lat: number; lng: number }>) {
+  if (points.length === 0) return [0, 0] as [number, number];
+
+  const totals = points.reduce(
     (acc, place) => {
-      const coords = place.coordinates!;
       return {
-        lat: acc.lat + coords.lat,
-        lng: acc.lng + coords.lng,
+        lat: acc.lat + place.lat,
+        lng: acc.lng + place.lng,
       };
     },
     { lat: 0, lng: 0 }
   );
 
   return [
-    totals.lng / withCoords.length,
-    totals.lat / withCoords.length,
+    totals.lng / points.length,
+    totals.lat / points.length,
   ] as [number, number];
 }
 
@@ -34,48 +84,117 @@ export function MapPlaceholder({
   destination = 'Kyoto',
   placesCount = 4,
   places = [],
+  className,
+  showOverlays = true,
+  controlsPosition = 'top-right',
 }: MapPlaceholderProps) {
-  const placesWithCoords = places.filter((place) => place.coordinates);
-  const center = getCenterFromPlaces(places);
-  const zoom = placesWithCoords.length > 0 ? 12 : 1;
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const resolvedPlaces = useMemo(
+    () =>
+      places
+        .map((place, index) => {
+          const coords = place.coordinates;
+          if (!coords) return null;
+          return { place, coords, index };
+        })
+        .filter((place): place is { place: Place; coords: { lat: number; lng: number }; index: number } => Boolean(place)),
+    [places]
+  );
+  const routeRequest = useMemo(
+    () => resolvedPlaces.map(({ coords }) => [coords.lng, coords.lat] as [number, number]),
+    [resolvedPlaces]
+  );
+  const routeKey = useMemo(() => routeRequest.map((pair) => pair.join(',')).join(';'), [routeRequest]);
+
+  useEffect(() => {
+    if (resolvedPlaces.length < 2) {
+      setRouteCoordinates([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const fetchRoute = async () => {
+      setRouteCoordinates([]);
+      try {
+        const response = await fetch(
+          `https://router.project-osrm.org/route/v1/driving/${routeKey}?overview=full&geometries=geojson`,
+          { signal: controller.signal }
+        );
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        const coords = data?.routes?.[0]?.geometry?.coordinates;
+        if (Array.isArray(coords) && coords.length > 1) {
+          setRouteCoordinates(coords as [number, number][]);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+      }
+    };
+
+    void fetchRoute();
+    return () => controller.abort();
+  }, [routeKey, resolvedPlaces.length]);
+
+  const center = getCenterFromCoordinates(resolvedPlaces.map((place) => place.coords));
+  const zoom = resolvedPlaces.length > 0 ? 12 : 1;
 
   return (
-    <div className="relative h-40 overflow-hidden rounded-xl bg-muted">
+    <div
+      className={cn(
+        'relative h-40 overflow-hidden rounded-xl bg-muted',
+        className
+      )}
+    >
       <Map
         center={center}
         zoom={zoom}
         minZoom={1}
         maxZoom={16}
       >
-        {placesWithCoords.map((place, index) => (
+        <MapAutoFit resolvedPlaces={resolvedPlaces} routeCoordinates={routeCoordinates} />
+        {routeCoordinates.length > 1 && (
+          <MapRoute
+            coordinates={routeCoordinates}
+            color="#3B82F6"
+            width={3}
+            opacity={0.85}
+          />
+        )}
+        {resolvedPlaces.map(({ place, coords, index }) => (
           <MapMarker
             key={place.id}
-            longitude={place.coordinates!.lng}
-            latitude={place.coordinates!.lat}
+            longitude={coords.lng}
+            latitude={coords.lat}
           >
-            <MarkerContent className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground shadow-lg">
+            <MarkerContent className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[11px] font-semibold text-slate-700 shadow-md ring-1 ring-slate-200">
               {index + 1}
             </MarkerContent>
             <MarkerTooltip>{place.name}</MarkerTooltip>
           </MapMarker>
         ))}
-        <MapControls showZoom position="top-right" />
+        <MapControls showZoom position={controlsPosition} />
       </Map>
 
-      {/* View on Google Button */}
-      <div className="absolute bottom-3 right-3">
-        <Button variant="secondary" size="sm" className="gap-1.5 bg-card shadow-md">
-          <ExternalLink className="h-3.5 w-3.5" />
-          View on Google
-        </Button>
-      </div>
+      {showOverlays && (
+        <>
+          <div className="absolute bottom-3 right-3">
+            <Button variant="secondary" size="sm" className="gap-1.5 bg-card shadow-md">
+              <ExternalLink className="h-3.5 w-3.5" />
+              View on Google
+            </Button>
+          </div>
 
-      {/* Stats overlay */}
-      <div className="absolute left-3 top-3">
-        <div className="rounded-lg bg-card/90 px-2.5 py-1.5 text-xs font-medium shadow-sm backdrop-blur-sm">
-          {placesCount} stops • {destination}
-        </div>
-      </div>
+          <div className="absolute left-3 top-3">
+            <div className="rounded-lg bg-card/90 px-2.5 py-1.5 text-xs font-medium shadow-sm backdrop-blur-sm">
+              {placesCount} stops • {destination}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -33,7 +33,7 @@ function mapDbPlaceToPlace(dbPlace: DbPlace): Place {
     cost: dbPlace.cost || undefined,
     rating: dbPlace.rating ? Number(dbPlace.rating) : undefined,
     address: dbPlace.address || undefined,
-    coordinates: dbPlace.latitude && dbPlace.longitude 
+    coordinates: dbPlace.latitude != null && dbPlace.longitude != null
       ? { lat: Number(dbPlace.latitude), lng: Number(dbPlace.longitude) }
       : undefined,
     tips: dbPlace.tips || undefined,

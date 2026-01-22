@@ -362,6 +362,10 @@ export interface PlaceInput {
   tips?: string[];
   confidence?: number;
   source: 'user' | 'ai';
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
 }
 
 export interface CreateTripWithPlacesInput {
@@ -400,6 +404,7 @@ export function useCreateTripWithPlaces() {
           tips: place.tips,
           confidence: place.confidence,
           source: place.source,
+          coordinates: place.coordinates,
         }));
 
         const placesPerDay = Math.ceil(places.length / dayCount);
@@ -477,6 +482,8 @@ export function useCreateTripWithPlaces() {
           duration: p.duration || 60,
           cost: p.cost || null,
           tips: p.tips || [],
+          latitude: p.coordinates?.lat ?? null,
+          longitude: p.coordinates?.lng ?? null,
         }));
         
         const { data: places, error: placesError } = await supabase

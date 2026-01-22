@@ -18,6 +18,8 @@ export interface AISuggestion {
   confidence: number;
   reason: string;
   neighborhood?: string;
+  latitude?: number;
+  longitude?: number;
   accepted?: boolean;
   rejected?: boolean;
 }

@@ -27,6 +27,8 @@ interface ExtractedPlace {
   description?: string;
   tips?: string[];
   selected?: boolean;
+  latitude?: number;
+  longitude?: number;
 }
 
 // Helper to parse duration from description (destination will be extracted by AI)
@@ -221,6 +223,10 @@ export default function CreatePage() {
         description: p.description,
         tips: p.tips,
         source: 'user' as const,
+        coordinates:
+          typeof p.latitude === 'number' && typeof p.longitude === 'number'
+            ? { lat: p.latitude, lng: p.longitude }
+            : undefined,
       }));
 
     const aiPlaceInputs: PlaceInput[] = aiPlaces.map(p => ({
@@ -229,6 +235,10 @@ export default function CreatePage() {
       description: p.description,
       source: 'ai' as const,
       confidence: p.confidence,
+      coordinates:
+        typeof p.latitude === 'number' && typeof p.longitude === 'number'
+          ? { lat: p.latitude, lng: p.longitude }
+          : undefined,
     }));
 
     const allPlaces = [...importedPlaceInputs, ...aiPlaceInputs];

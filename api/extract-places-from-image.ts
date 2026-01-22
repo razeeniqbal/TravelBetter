@@ -7,6 +7,8 @@ interface ExtractedPlace {
   category: string;
   description?: string;
   tips?: string[];
+  latitude?: number;
+  longitude?: number;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -46,6 +48,8 @@ When analyzing travel-related images (screenshots of itineraries, maps, social m
 3. Category (food, culture, nature, shop, night, photo, accommodation, transport)
 4. Brief description if context is available
 5. Any tips or recommendations mentioned
+6. Geographic coordinates (latitude and longitude in decimal degrees)
+7. If coordinates are unknown, set latitude and longitude to null
 
 You MUST respond with a valid JSON object in this exact format:
 {
@@ -55,7 +59,9 @@ You MUST respond with a valid JSON object in this exact format:
       "nameLocal": "Local name if visible",
       "category": "one of: food, culture, nature, shop, night, photo, accommodation, transport",
       "description": "Brief description",
-      "tips": ["tip1", "tip2"]
+      "tips": ["tip1", "tip2"],
+      "latitude": 35.0116,
+      "longitude": 135.7681
     }
   ],
   "summary": "Brief summary of what was found in the image"

@@ -7,6 +7,8 @@ interface ExtractedPlace {
   category: string;
   description?: string;
   tips?: string[];
+  latitude?: number;
+  longitude?: number;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -59,6 +61,8 @@ When given a URL to a travel-related content (YouTube videos, Instagram posts, b
 3. Category for each place (food, culture, nature, shop, night, photo, accommodation, transport)
 4. Brief description based on context
 5. Any tips or recommendations
+6. Geographic coordinates (latitude and longitude in decimal degrees)
+7. If coordinates are unknown, set latitude and longitude to null
 
 For social media URLs, infer what places might be featured based on the URL structure and common patterns.
 For YouTube, try to identify the destination and common attractions.
@@ -71,7 +75,9 @@ You MUST respond with a valid JSON object in this exact format:
       "nameLocal": "Local name if known",
       "category": "one of: food, culture, nature, shop, night, photo, accommodation, transport",
       "description": "Brief description",
-      "tips": ["tip1", "tip2"]
+      "tips": ["tip1", "tip2"],
+      "latitude": 35.0116,
+      "longitude": 135.7681
     }
   ],
   "summary": "Brief summary of findings",

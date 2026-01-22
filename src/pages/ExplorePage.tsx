@@ -51,9 +51,20 @@ export default function ExplorePage() {
     : null;
 
   const displayPlace = selectedMapPlace || allPlaces[0];
+  const selectedMapCoords = useMemo(
+    () => (selectedMapPlace?.coordinates ? selectedMapPlace.coordinates : null),
+    [selectedMapPlace]
+  );
 
   const placesWithCoords = useMemo(
-    () => allPlaces.filter((place) => place.coordinates),
+    () =>
+      allPlaces
+        .map((place, index) => {
+          const coords = place.coordinates;
+          if (!coords) return null;
+          return { place, coords, index };
+        })
+        .filter((place): place is { place: Place; coords: { lat: number; lng: number }; index: number } => Boolean(place)),
     [allPlaces]
   );
 
@@ -61,10 +72,9 @@ export default function ExplorePage() {
     if (placesWithCoords.length === 0) return [0, 0] as [number, number];
     const totals = placesWithCoords.reduce(
       (acc, place) => {
-        const coords = place.coordinates!;
         return {
-          lat: acc.lat + coords.lat,
-          lng: acc.lng + coords.lng,
+          lat: acc.lat + place.coords.lat,
+          lng: acc.lng + place.coords.lng,
         };
       },
       { lat: 0, lng: 0 }
@@ -167,11 +177,11 @@ export default function ExplorePage() {
       {/* Map */}
       <div className="h-[60vh] w-full">
         <Map center={mapCenter} zoom={mapZoom} minZoom={1} maxZoom={16}>
-          {placesWithCoords.map((place, index) => (
+          {placesWithCoords.map(({ place, coords, index }) => (
             <MapMarker
               key={place.id}
-              longitude={place.coordinates!.lng}
-              latitude={place.coordinates!.lat}
+              longitude={coords.lng}
+              latitude={coords.lat}
               onClick={() => setSelectedPlace(place.id)}
             >
               <MarkerContent
@@ -187,10 +197,10 @@ export default function ExplorePage() {
             </MapMarker>
           ))}
 
-          {selectedMapPlace?.coordinates && (
+          {selectedMapPlace && selectedMapCoords && (
             <MapPopup
-              longitude={selectedMapPlace.coordinates.lng}
-              latitude={selectedMapPlace.coordinates.lat}
+              longitude={selectedMapCoords.lng}
+              latitude={selectedMapCoords.lat}
               closeButton
               onClose={() => setSelectedPlace(null)}
             >

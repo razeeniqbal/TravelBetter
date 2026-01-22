@@ -12,6 +12,8 @@ interface SuggestedPlace {
   confidence: number;
   reason: string;
   neighborhood?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -35,6 +37,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       quickSelections = {},
       importedPlaces = [],
       existingPlaces = [],
+      preferences = {},
+      travelStyle = [],
+      dayNumber = 1,
       duration = 3
     } = req.body;
 
@@ -86,24 +91,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       contextParts.push(`Already in itinerary: ${existingPlaceNames}`);
     }
 
-    // Smart prompt that can interpret user's freeform input including multi-city trips
-    const systemPrompt = `Expert travel planner. Identify ALL destinations from user input and suggest places for EACH location.
+    const systemPrompt = `You are an expert travel planner that suggests personalized places to visit.
 
-IMPORTANT: If input mentions multiple places (e.g., "melaka to johor", "tokyo and kyoto", "from paris to rome"):
-- Include places from ALL mentioned destinations
-- Split suggestions between the destinations
-- In resolvedDestination, list all destinations (e.g., "Melaka & Johor" or "Melaka to Johor")
+Your suggestions should:
+1. Complement the user's existing itinerary without duplicating places
+2. Match the user's stated interests and preferences closely
+3. Consider the travel style, budget, and pace preferences
+4. Include a mix of popular and hidden gem spots
+5. Be logistically practical (nearby to existing places when possible)
+6. Include local favorites and authentic experiences
+
+For each suggestion, provide:
+- A confidence score (0-100) based on how well it matches the user's specific preferences
+- A personalized reason explaining WHY this place matches their request
+- Include the neighborhood/area for context
+- Provide geographic coordinates (latitude and longitude in decimal degrees)
+- If coordinates are unknown, set latitude and longitude to null
 
 Categories: food, culture, nature, shop, night, photo, accommodation, transport
 
-Response format (JSON only):
-{"promptInterpretation":"What you understood - list ALL destinations identified","resolvedDestination":"All destinations (e.g. 'Melaka to Johor' or 'Tokyo & Kyoto')","suggestions":[{"name":"English name","nameLocal":"Local name","category":"category","description":"description","duration":60,"cost":"price","tips":["tip"],"confidence":0-100,"reason":"why it matches","neighborhood":"area/city name"}]}`;
+You MUST respond with a valid JSON object in this exact format:
+{
+  "promptInterpretation": "Brief summary of what you understood from the user request",
+  "suggestions": [
+    {
+      "name": "Place name in English",
+      "nameLocal": "Local name if known",
+      "category": "one of: food, culture, nature, shop, night, photo, accommodation, transport",
+      "description": "Engaging description of the place",
+      "duration": 60,
+      "cost": "¥500 or Free",
+      "tips": ["tip1", "tip2"],
+      "confidence": 85,
+      "reason": "Personalized explanation of why this matches their request",
+      "neighborhood": "Area name",
+      "latitude": 35.0116,
+      "longitude": 135.7681
+    }
+  ]
+}`;
 
-    const promptText = `USER INPUT: "${destination}" (${duration} days trip). ${contextParts.join(' ')}
+    const promptText = `Suggest 5-8 places to visit in ${destination} for a ${duration}-day trip.
 
-IMPORTANT: If multiple destinations are mentioned (like "X to Y" or "X and Y"), suggest places from ALL of them, not just one. Include the city/area name in the "neighborhood" field so users know which destination each place belongs to.
+${contextParts.join('\n\n')}
 
-Suggest 5-8 places total. JSON only, no markdown.`;
+Generate personalized suggestions that directly address what the user is looking for. Be specific about why each place matches their preferences.
+
+Respond ONLY with valid JSON, no markdown or extra text.`;
 
     // Call Google Gemini API
     const response = await fetch(getGeminiUrl(GOOGLE_API_KEY), {
@@ -148,7 +182,7 @@ Suggest 5-8 places total. JSON only, no markdown.`;
     }
 
     // Parse the JSON response
-    let result: { suggestions?: SuggestedPlace[]; promptInterpretation?: string; resolvedDestination?: string };
+    let result: { suggestions?: SuggestedPlace[]; promptInterpretation?: string };
     try {
       result = parseGeminiJson(responseText);
     } catch (parseError) {
@@ -158,19 +192,16 @@ Suggest 5-8 places total. JSON only, no markdown.`;
 
     const suggestions: SuggestedPlace[] = result.suggestions || [];
     const promptInterpretation: string = result.promptInterpretation || '';
-    const resolvedDestination: string = result.resolvedDestination || destination;
 
     // Sort by confidence
     suggestions.sort((a, b) => b.confidence - a.confidence);
 
     console.log(`Generated ${suggestions.length} suggestions`);
     console.log('Prompt interpretation:', promptInterpretation);
-    console.log('Resolved destination:', resolvedDestination);
 
     return res.status(200).json({
       suggestions,
       promptInterpretation,
-      resolvedDestination,
       success: true
     });
 

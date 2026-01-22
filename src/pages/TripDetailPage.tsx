@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { DraggableTimeline } from '@/components/trip/DraggableTimeline';
 import { MapPlaceholder } from '@/components/trip/MapPlaceholder';
-import { BottomNav } from '@/components/navigation/BottomNav';
 import { ShareModal } from '@/components/shared/ShareModal';
 import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { AnchorSelector } from '@/components/trip/AnchorSelector';
 import { AddPlacesOptionsDialog } from '@/components/trip/AddPlacesOptionsDialog';
-import { AttributionBadge } from '@/components/trip/AttributionBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { BottomSheet, BottomSheetContent, BottomSheetDescription, BottomSheetTitle } from '@/components/ui/bottom-sheet';
+import { TimelinePlace } from '@/components/trip/TimelinePlace';
 import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -33,6 +33,8 @@ export default function TripDetailPage() {
   const [anchorSelectorOpen, setAnchorSelectorOpen] = useState(false);
   const [addPlacesDialogOpen, setAddPlacesDialogOpen] = useState(false);
   const [isAddingDay, setIsAddingDay] = useState(false);
+  const snapPoints = useMemo(() => [0.2, 0.55, 0.9], []);
+  const [activeSnapPoint, setActiveSnapPoint] = useState<number | string | null>(snapPoints[0]);
   
   // Fetch trip from database
   const { data: trip, isLoading } = useTripDetail(tripId);
@@ -66,6 +68,10 @@ export default function TripDetailPage() {
       discardChanges();
     }
   }, [trip?.id]);
+
+  useEffect(() => {
+    console.log('BottomSheet mounted');
+  }, []);
   
   if (isLoading) {
     return (
@@ -89,6 +95,14 @@ export default function TripDetailPage() {
   const currentDayItinerary = itinerary.find(d => d.day === activeDay);
   const totalPlaces = itinerary.reduce((acc, day) => acc + day.places.length, 0);
   const totalWalking = currentDayItinerary?.places.reduce((acc, p) => acc + (p.walkingTimeFromPrevious || 0), 0) || 0;
+  const totalWalkingKm = (totalWalking * 0.08).toFixed(1);
+  const isCollapsed = activeSnapPoint === snapPoints[0];
+  const isExpanded = activeSnapPoint === snapPoints[2];
+  const previewPlaces = currentDayItinerary?.places.slice(0, 3) ?? [];
+  const previewRemaining = (currentDayItinerary?.places.length || 0) - previewPlaces.length;
+  const fallbackTransform = typeof activeSnapPoint === 'number'
+    ? `translate3d(0, ${(1 - activeSnapPoint) * 100}vh, 0)`
+    : undefined;
   
   // Get all places for anchor selection
   const allPlaces = itinerary.flatMap(day => day.places);
@@ -96,6 +110,11 @@ export default function TripDetailPage() {
   // Count sources for legend
   const userPlacesCount = allPlaces.filter(p => p.source === 'user').length;
   const aiPlacesCount = allPlaces.filter(p => p.source === 'ai').length;
+
+  const getTimeForIndex = (idx: number) => {
+    const startHour = 9 + Math.floor(idx * 1.5);
+    return `${startHour}:00 ${startHour < 12 ? 'AM' : 'PM'}`;
+  };
 
   const handleShare = () => {
     setShareModalOpen(true);
@@ -108,6 +127,17 @@ export default function TripDetailPage() {
       return;
     }
     setAddToItineraryOpen(true);
+  };
+
+  const handlePrimaryAction = () => {
+    if (isOwner) {
+      if (!isEditMode) {
+        toggleEditMode();
+      }
+      setActiveSnapPoint(snapPoints[2]);
+      return;
+    }
+    handleAddToItinerary();
   };
 
   const handleAddDay = async () => {
@@ -178,261 +208,301 @@ export default function TripDetailPage() {
   const shareUrl = `${window.location.origin}/trip/${tripId}`;
 
   return (
-    <div className="min-h-screen bg-background pb-32">
-      {/* Header */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 px-4 py-3 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => navigate(-1)}
-            className="rounded-full"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="font-semibold">Trip to {trip.destination}</h1>
-            <p className="text-xs text-muted-foreground">{trip.duration} days • {totalPlaces} stops</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Edit Mode Header Actions */}
-          {isEditMode && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setAnchorSelectorOpen(true)}
-                className={cn(
-                  "gap-2",
-                  anchorPlaceId 
-                    ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400" 
-                    : "border-dashed"
-                )}
-              >
-                <Home className="h-4 w-4" />
-                {anchorPlaceId ? 'Anchor' : 'Set Anchor'}
-              </Button>
+    <div className="relative min-h-[100dvh] overflow-hidden bg-background">
+      <div
+        className={cn(
+          'absolute inset-0 z-0',
+          isExpanded ? 'pointer-events-none' : 'pointer-events-auto'
+        )}
+      >
+        <MapPlaceholder
+          destination={trip.destination}
+          placesCount={currentDayItinerary?.places.length || 0}
+          places={currentDayItinerary?.places || []}
+          className="h-full w-full rounded-none"
+          showOverlays={false}
+          controlsPosition="bottom-right"
+        />
+      </div>
+
+      <header className="pointer-events-auto absolute left-0 right-0 top-0 z-50 px-4 pt-4">
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-background/90 px-3 py-2 shadow-lg backdrop-blur">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate(-1)}
+              className="rounded-full"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Trip</p>
+              <h1 className="text-sm font-semibold">{trip.title}</h1>
+              <p className="text-[11px] text-muted-foreground">
+                {trip.duration} days • {totalPlaces} stops
+              </p>
             </div>
-          )}
+          </div>
           {!isEditMode && (
-            <>
-              <Button 
-                variant="ghost" 
-                size="icon" 
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
                 className="rounded-full"
                 onClick={handleCopyTrip}
                 disabled={remixMutation.isPending}
               >
                 <GitFork className="h-5 w-5" />
               </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="rounded-full"
                 onClick={handleReview}
               >
                 <MoreHorizontal className="h-5 w-5" />
               </Button>
-            </>
+            </div>
           )}
         </div>
       </header>
 
-      {/* Edit Mode Banner */}
-      {isEditMode && (
-        <div className="bg-primary/10 border-b border-primary/20 px-4 py-2">
-          <p className="text-sm text-center text-primary font-medium">
-            ✏️ Edit Mode — Drag to reorder, set anchor point, or remove places
-          </p>
-        </div>
-      )}
+      <BottomSheet
+        defaultOpen
+        modal={false}
+        dismissible={false}
+        snapPoints={snapPoints}
+        activeSnapPoint={activeSnapPoint}
+        setActiveSnapPoint={setActiveSnapPoint}
+        shouldScaleBackground={false}
+      >
+        <BottomSheetContent
+          showOverlay
+          aria-label="Trip itinerary sheet"
+          aria-describedby={undefined}
+          style={fallbackTransform ? { transform: fallbackTransform } : undefined}
+        >
+          <BottomSheetTitle className="sr-only">Trip itinerary sheet</BottomSheetTitle>
+          <BottomSheetDescription className="sr-only">
+            View and manage the daily itinerary for this trip.
+          </BottomSheetDescription>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="px-4 pb-4 pt-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-500">
+                DEBUG: sheet mounted
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Itinerary</p>
+                  <h2 className="text-base font-semibold text-foreground">
+                    Day {activeDay} • {trip.destination}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {currentDayItinerary?.places.length || 0} stops • {totalWalkingKm} km total walking
+                  </p>
+                </div>
+                {currentDayItinerary?.title && (
+                  <Badge variant="secondary" className="text-xs">
+                    {currentDayItinerary.title}
+                  </Badge>
+                )}
+              </div>
 
-      {/* Day Selector Tabs - Responsive */}
-      <div className="border-b px-4 py-3">
-        <div className="flex flex-wrap gap-2">
-          {itinerary.map((day) => (
-            <button
-              key={day.day}
-              onClick={() => setActiveDay(day.day)}
-              className={cn(
-                'rounded-full px-4 py-2 text-sm font-medium transition-all',
-                activeDay === day.day
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'border border-border bg-card text-muted-foreground hover:bg-muted'
+              {isEditMode && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
+                    Edit mode active
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAnchorSelectorOpen(true)}
+                    className={cn(
+                      'gap-2',
+                      anchorPlaceId
+                        ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                        : 'border-dashed'
+                    )}
+                  >
+                    <Home className="h-4 w-4" />
+                    {anchorPlaceId ? 'Anchor set' : 'Set anchor'}
+                  </Button>
+                </div>
               )}
-            >
-              Day {day.day}
-            </button>
-          ))}
-          {isOwner && (
-            <button 
-              className={cn(
-                "flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground hover:text-foreground transition-colors",
-                isAddingDay && "opacity-50 pointer-events-none"
-              )}
-              onClick={handleAddDay}
-              disabled={isAddingDay}
-            >
-              {isAddingDay ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-            </button>
-          )}
-        </div>
-      </div>
 
-      {/* Map Section */}
-      <div className="px-4 pt-4">
-        <MapPlaceholder 
-          destination={trip.destination} 
-          placesCount={currentDayItinerary?.places.length || 0} 
-          places={currentDayItinerary?.places || []}
-        />
-      </div>
-
-      {/* Source Legend */}
-      {(userPlacesCount > 0 || aiPlacesCount > 0) && (
-        <div className="flex items-center gap-4 px-4 pt-4">
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            {userPlacesCount > 0 && (
-              <span className="flex items-center gap-1">
-                <span className="flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                  <User className="h-3 w-3" />
-                </span>
-                {userPlacesCount} imported
-              </span>
-            )}
-            {aiPlacesCount > 0 && (
-              <span className="flex items-center gap-1">
-                <span className="flex items-center gap-0.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                  <Sparkles className="h-3 w-3" />
-                </span>
-                {aiPlacesCount} AI suggested
-              </span>
-            )}
-            {anchorPlaceId && (
-              <span className="flex items-center gap-1">
-                <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                  <Home className="h-3 w-3" />
-                </span>
-                Anchor set
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Itinerary Section */}
-      <div className="px-4 pt-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold text-foreground">Itinerary</h2>
-            <p className="text-xs text-muted-foreground">
-              {currentDayItinerary?.places.length || 0} stops • {(totalWalking * 0.08).toFixed(1)} km total walking
-            </p>
-          </div>
-          {currentDayItinerary?.title && (
-            <Badge variant="secondary" className="text-xs">
-              {currentDayItinerary.title}
-            </Badge>
-          )}
-        </div>
-
-        {/* Draggable Timeline */}
-        {currentDayItinerary && (
-          <DraggableTimeline
-            places={currentDayItinerary.places}
-            dayIndex={itinerary.findIndex(d => d.day === activeDay)}
-            isEditMode={isEditMode}
-            anchorPlaceId={anchorPlaceId}
-            onReorder={reorderPlaces}
-            onRemove={removePlace}
-            onSetAnchor={setAsAnchor}
-          />
-        )}
-
-        {/* Empty state */}
-        {currentDayItinerary && currentDayItinerary.places.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-              <Plus className="h-8 w-8 text-muted-foreground" />
+              <div className="mt-4 flex items-center gap-2">
+                <Button
+                  onClick={handlePrimaryAction}
+                  className={cn(
+                    'flex-1 gap-2 rounded-xl',
+                    isOwner && !isEditMode && 'bg-violet-600 hover:bg-violet-700',
+                    !isOwner && 'bg-violet-600 hover:bg-violet-700'
+                  )}
+                  variant={isEditMode ? 'outline' : 'default'}
+                >
+                  {isOwner ? <Pencil className="h-4 w-4" /> : <ListPlus className="h-4 w-4" />}
+                  {isOwner ? (isEditMode ? 'Continue editing' : 'Modify itinerary') : 'Add to itinerary'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 rounded-xl"
+                  onClick={handleShare}
+                >
+                  <Share2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <p className="text-muted-foreground">No places for this day</p>
-            <Button 
-              variant="link" 
-              className="mt-2"
-              onClick={() => setAddPlacesDialogOpen(true)}
-            >
-              Add places
-            </Button>
-          </div>
-        )}
-      </div>
 
-      {/* Bottom Action Bar - Edit Mode */}
-      {isEditMode && (
-        <div className="fixed bottom-20 left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur-sm">
-          <div className="mx-auto flex max-w-lg gap-3">
-            <Button 
-              variant="outline" 
-              className="flex-1 gap-2 rounded-xl"
-              onClick={discardChanges}
-              disabled={isSaving}
-            >
-              <X className="h-4 w-4" />
-              Cancel
-            </Button>
-            <Button 
-              className="flex-1 gap-2 rounded-xl bg-green-600 hover:bg-green-700"
-              onClick={saveChanges}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Save Changes
-            </Button>
-          </div>
-        </div>
-      )}
+            {!isCollapsed && (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-border/60">
+                <div className="px-4 pt-3">
+                  <div className="flex gap-2 overflow-x-auto pb-2">
+                    {itinerary.map((day) => (
+                      <button
+                        key={day.day}
+                        onClick={() => setActiveDay(day.day)}
+                        className={cn(
+                          'rounded-full px-4 py-2 text-sm font-medium transition-all',
+                          activeDay === day.day
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'border border-border bg-card text-muted-foreground hover:bg-muted'
+                        )}
+                      >
+                        Day {day.day}
+                      </button>
+                    ))}
+                    {isOwner && (
+                      <button
+                        className={cn(
+                          'flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground',
+                          isAddingDay && 'pointer-events-none opacity-50'
+                        )}
+                        onClick={handleAddDay}
+                        disabled={isAddingDay}
+                      >
+                        {isAddingDay ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Plus className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-      {/* Bottom Action Bar - Normal Mode */}
-      {!isEditMode && (
-        <div className="fixed bottom-20 left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur-sm">
-          <div className="mx-auto flex max-w-lg gap-3">
-            <Button 
-              variant="outline" 
-              className="flex-1 gap-2 rounded-xl bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400"
-              onClick={handleShare}
-            >
-              <Share2 className="h-4 w-4" />
-              Share
-            </Button>
-            {isOwner ? (
-              <Button 
-                className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
-                onClick={toggleEditMode}
-              >
-                <Pencil className="h-4 w-4" />
-                Modify Itinerary
-              </Button>
-            ) : (
-              <Button 
-                className="flex-1 gap-2 rounded-xl bg-violet-600 hover:bg-violet-700"
-                onClick={handleAddToItinerary}
-              >
-                <ListPlus className="h-4 w-4" />
-                Add to Itinerary
-              </Button>
+                {(userPlacesCount > 0 || aiPlacesCount > 0 || anchorPlaceId) && (
+                  <div className="px-4 pb-2">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      {userPlacesCount > 0 && (
+                        <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                            <User className="h-3 w-3" />
+                          </span>
+                          {userPlacesCount} imported
+                        </span>
+                      )}
+                      {aiPlacesCount > 0 && (
+                        <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-0.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                            <Sparkles className="h-3 w-3" />
+                          </span>
+                          {aiPlacesCount} AI suggested
+                        </span>
+                      )}
+                      {anchorPlaceId && (
+                        <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                            <Home className="h-3 w-3" />
+                          </span>
+                          Anchor set
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto px-4 pb-24">
+                  {currentDayItinerary && currentDayItinerary.places.length > 0 ? (
+                    isExpanded ? (
+                      <DraggableTimeline
+                        places={currentDayItinerary.places}
+                        dayIndex={itinerary.findIndex(d => d.day === activeDay)}
+                        isEditMode={isEditMode}
+                        anchorPlaceId={anchorPlaceId}
+                        onReorder={reorderPlaces}
+                        onRemove={removePlace}
+                        onSetAnchor={setAsAnchor}
+                      />
+                    ) : (
+                      <div className="space-y-3">
+                        {previewPlaces.map((place, index) => (
+                          <TimelinePlace
+                            key={place.id}
+                            place={place}
+                            index={index + 1}
+                            time={getTimeForIndex(index)}
+                            isLast={index === previewPlaces.length - 1}
+                            onClick={() => navigate(`/place/${place.id}`)}
+                          />
+                        ))}
+                        {previewRemaining > 0 && (
+                          <div className="rounded-xl border border-dashed border-muted-foreground/30 bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+                            +{previewRemaining} more stops. Pull up to view the full itinerary.
+                          </div>
+                        )}
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                        <Plus className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <p className="text-muted-foreground">No places for this day</p>
+                      <Button
+                        variant="link"
+                        className="mt-2"
+                        onClick={() => setAddPlacesDialogOpen(true)}
+                      >
+                        Add places
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {isExpanded && isEditMode && (
+              <div className="border-t bg-background/95 px-4 py-3">
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-2 rounded-xl"
+                    onClick={discardChanges}
+                    disabled={isSaving}
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 gap-2 rounded-xl bg-green-600 hover:bg-green-700"
+                    onClick={saveChanges}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
-        </div>
-      )}
+        </BottomSheetContent>
+      </BottomSheet>
 
       <ShareModal
         open={shareModalOpen}
@@ -462,8 +532,6 @@ export default function TripDetailPage() {
         destination={trip.destination}
         dayNumber={activeDay}
       />
-      
-      <BottomNav />
     </div>
   );
 }

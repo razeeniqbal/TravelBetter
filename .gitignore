@@ -35,3 +35,8 @@ dist-ssr
 # Files for testing purposes
 listmodel.md
 .env*.local
+
+# files and folders from AI
+.opencode/
+openspec/
+AGENTS.md

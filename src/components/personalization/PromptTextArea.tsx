@@ -19,7 +19,7 @@ export function PromptTextArea({
   onReset,
   charCount,
   minChars = 20,
-  maxChars = 1000,
+  maxChars = 5000,
 }: PromptTextAreaProps) {
   const isUnderMin = charCount < minChars;
   const isNearMax = charCount > maxChars * 0.9;
@@ -83,7 +83,7 @@ export function PromptTextArea({
       <div className="flex items-start gap-2 rounded-lg bg-accent/10 px-3 py-2">
         <Lightbulb className="h-4 w-4 text-accent-foreground mt-0.5 shrink-0" />
         <p className="text-xs text-accent-foreground">
-          Be specific! The more details you share, the better suggestions you'll get.
+          This is the exact prompt sent to the AI. Add notes or adjust it to refine suggestions.
         </p>
       </div>
 

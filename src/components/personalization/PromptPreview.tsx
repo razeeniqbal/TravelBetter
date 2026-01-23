@@ -22,7 +22,7 @@ export function PromptPreview({
       <div className="text-center">
         <h2 className="text-lg font-semibold text-foreground">Ready to explore?</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Review your request before we find amazing places
+          Review the exact prompt we will send to the AI
         </p>
       </div>
 

@@ -127,6 +127,13 @@ export interface ExtractPlacesFromImageResponse {
   success: boolean;
 }
 
+export interface ExtractPlacesFromTextResponse {
+  places: ExtractedPlace[];
+  summary: string;
+  destination?: string;
+  success: boolean;
+}
+
 export interface AISuggestion {
   name: string;
   nameLocal?: string;
@@ -155,6 +162,9 @@ export const api = {
 
   extractPlacesFromImage: (image: string, destination?: string) =>
     fetchApi<ExtractPlacesFromImageResponse>('extract-places-from-image', { image, destination }),
+
+  extractPlacesFromText: (text: string, destination?: string) =>
+    fetchApi<ExtractPlacesFromTextResponse>('extract-places-from-text', { text, destination }),
 
   // Uses caching to reduce duplicate API calls for the same destination/prompt
   generateAISuggestions: (params: {

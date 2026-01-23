@@ -91,6 +91,88 @@ function extractBasicDestination(description: string): string {
   return description.trim();
 }
 
+function getFirstLineSummary(description: string): string {
+  const firstLine = description.split(/\r?\n/).find(line => line.trim());
+  if (!firstLine) return '';
+
+  const cleaned = firstLine
+    .replace(/[\p{Extended_Pictographic}]/gu, '')
+    .replace(/[*_~`>#]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return cleaned;
+}
+
+function isLikelyItinerary(description: string): boolean {
+  const trimmed = description.trim();
+  if (!trimmed) return false;
+  const lineCount = description.split(/\r?\n/).filter(line => line.trim()).length;
+  if (lineCount > 1) return true;
+
+  return /(day\s*\d+|itinerary|schedule|>>|\d{1,2}[:.]\d{2}\s*(am|pm)?)/i.test(trimmed);
+}
+
+function extractFallbackPlaces(description: string): ExtractedPlace[] {
+  const lines = description.split(/\r?\n/);
+  const places: ExtractedPlace[] = [];
+  const seen = new Set<string>();
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const cleaned = trimmed
+      .replace(/[\p{Extended_Pictographic}]/gu, '')
+      .replace(/^[•\-*]+\s*/g, '')
+      .replace(/^day\s*\d+[:.\-]?\s*/i, '')
+      .replace(/^\d{1,2}[:.]\d{2}\s*(am|pm)?\s*/i, '')
+      .replace(/^\d{1,2}\s*(am|pm)\s*/i, '')
+      .replace(/^\d+\.\s*/, '')
+      .replace(/>>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleaned) continue;
+    if (cleaned.length > 80) continue;
+    if (/\b(trip|itinerary|schedule|notes)\b/i.test(cleaned)) continue;
+    if (/\b(arrive|depart|check[- ]?in|flight|train|bus|transfer)\b/i.test(cleaned)) continue;
+
+    const letterCount = (cleaned.match(/\p{L}/gu) || []).length;
+    const digitCount = (cleaned.match(/\d/g) || []).length;
+    if (letterCount === 0 || digitCount > letterCount) continue;
+
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    places.push({
+      name: cleaned,
+      category: 'attraction',
+      selected: true,
+    });
+  }
+
+  return places;
+}
+
+function getDisplayDestination(description: string, extractedDestination?: string): string {
+  const extracted = extractedDestination?.trim();
+  if (extracted) return extracted;
+
+  const basic = extractBasicDestination(description);
+  if (basic && basic.length <= 60 && !basic.includes('\n')) {
+    return basic;
+  }
+
+  const summaryLine = getFirstLineSummary(description);
+  if (summaryLine) {
+    return summaryLine.length > 80 ? `${summaryLine.slice(0, 77)}...` : summaryLine;
+  }
+
+  return basic || summaryLine;
+}
+
 export default function CreatePage() {
   const navigate = useNavigate();
   const createTripWithPlaces = useCreateTripWithPlaces();
@@ -101,11 +183,12 @@ export default function CreatePage() {
   
   // Import state
   const [isImporting, setIsImporting] = useState(false);
-  const [importType, setImportType] = useState<'url' | 'screenshot' | null>(null);
+  const [importType, setImportType] = useState<'url' | 'screenshot' | 'text' | null>(null);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [extractedPlaces, setExtractedPlaces] = useState<ExtractedPlace[]>([]);
   const [extractSummary, setExtractSummary] = useState('');
+  const [extractedDestination, setExtractedDestination] = useState('');
   
   // AI suggestions state
   const [aiSelectedPlaces, setAiSelectedPlaces] = useState<AISuggestion[]>([]);
@@ -197,9 +280,13 @@ export default function CreatePage() {
     setStep('personalization');
   };
 
-  const handlePersonalizationComplete = (selectedPlaces: AISuggestion[], days: number) => {
+  const handlePersonalizationComplete = (
+    selectedPlaces: AISuggestion[],
+    days: number,
+    resolvedDestination?: string
+  ) => {
     setAiSelectedPlaces(selectedPlaces);
-    handleGenerateTrip(selectedPlaces, days);
+    handleGenerateTrip(selectedPlaces, days, resolvedDestination);
   };
 
   const handlePersonalizationSkip = (days: number) => {
@@ -210,7 +297,8 @@ export default function CreatePage() {
     setStep('generating');
 
     // Use resolved destination from AI or extract from description
-    const destination = resolvedDestination || extractBasicDestination(tripDescription) || tripDescription.trim();
+    const fallbackDestination = getDisplayDestination(tripDescription, extractedDestination);
+    const destination = resolvedDestination || fallbackDestination || 'Unknown';
     const finalDuration = days || parseDuration(tripDescription);
 
     // Combine imported and AI-selected places into PlaceInput objects
@@ -244,9 +332,15 @@ export default function CreatePage() {
     const allPlaces = [...importedPlaceInputs, ...aiPlaceInputs];
 
     // Create title from description or destination
-    const title = tripDescription.length > 50
-      ? `${finalDuration} Days in ${destination}`
-      : tripDescription || `Trip to ${destination}`;
+    const trimmedDescription = tripDescription.trim();
+    const useRawTitle = trimmedDescription.length > 0
+      && trimmedDescription.length <= 50
+      && !isLikelyItinerary(tripDescription);
+    const title = useRawTitle
+      ? trimmedDescription
+      : destination
+        ? `${finalDuration} Days in ${destination}`
+        : `Trip (${finalDuration} days)`;
 
     try {
       createTripWithPlaces.mutate(
@@ -273,18 +367,88 @@ export default function CreatePage() {
     }
   };
 
+  const handleTextImport = async () => {
+    setIsImporting(true);
+    setImportType('text');
+    setExtractedPlaces([]);
+    setExtractSummary('');
+    setExtractedDestination('');
+
+    const destinationSeed = getDisplayDestination(tripDescription);
+    const fallbackPlaces = extractFallbackPlaces(tripDescription);
+
+    try {
+      const { data, error } = await api.extractPlacesFromText(
+        tripDescription,
+        destinationSeed || undefined
+      );
+
+      const resolvedDestination = data?.destination || destinationSeed;
+      const resolvedSummary = data?.summary || '';
+
+      if (error) {
+        if (fallbackPlaces.length > 0) {
+          setExtractedPlaces(fallbackPlaces);
+          setExtractSummary(resolvedSummary || `Found ${fallbackPlaces.length} places from your itinerary`);
+          setExtractedDestination(resolvedDestination || destinationSeed);
+          setStep('review-extracted');
+          toast.success(`Captured ${fallbackPlaces.length} places from your itinerary`);
+          return;
+        }
+        throw error;
+      }
+
+      const extracted = data?.places || [];
+      if (extracted.length > 0) {
+        setExtractedPlaces(extracted.map((p: ExtractedPlace) => ({ ...p, selected: true })));
+        setExtractSummary(resolvedSummary || `Found ${extracted.length} places from your itinerary`);
+        setExtractedDestination(resolvedDestination || destinationSeed);
+        setStep('review-extracted');
+        toast.success(`Extracted ${extracted.length} places from your itinerary`);
+        return;
+      }
+
+      if (fallbackPlaces.length > 0) {
+        setExtractedPlaces(fallbackPlaces);
+        setExtractSummary(resolvedSummary || `Found ${fallbackPlaces.length} places from your itinerary`);
+        setExtractedDestination(resolvedDestination || destinationSeed);
+        setStep('review-extracted');
+        toast.success(`Captured ${fallbackPlaces.length} places from your itinerary`);
+        return;
+      }
+
+      if (resolvedDestination) {
+        setExtractedDestination(resolvedDestination);
+      }
+      if (resolvedSummary) {
+        setExtractSummary(resolvedSummary);
+      }
+      toast.info('We could not find specific places, but you can continue with your itinerary.');
+      setStep('personalization');
+    } catch (error) {
+      console.error('Error extracting from text:', error);
+      toast.error('Failed to extract places. Please try again.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const handleImportAndContinue = () => {
     if (!tripDescription.trim()) {
       toast.error('Please describe your trip first (e.g., "melaka to johor" or "5 days in Tokyo")');
       return;
     }
 
-    // Any non-empty description is valid - let the AI figure out the destination
+    if (isLikelyItinerary(tripDescription)) {
+      handleTextImport();
+      return;
+    }
+
     setStep('personalization');
   };
 
   // Extract basic destination for display (AI will resolve the actual destination)
-  const displayDestination = extractBasicDestination(tripDescription);
+  const displayDestination = getDisplayDestination(tripDescription, extractedDestination);
   const tripDuration = parseDuration(tripDescription);
   const importedPlaceNames = extractedPlaces.filter(p => p.selected).map(p => p.name);
 
@@ -370,8 +534,13 @@ export default function CreatePage() {
                 onClick={handleImportAndContinue}
                 className="mt-6 w-full gap-2 rounded-xl py-6 text-base"
                 size="lg"
+                disabled={isImporting}
               >
-                <Sparkles className="h-5 w-5" />
+                {isImporting && importType === 'text' ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-5 w-5" />
+                )}
                 Generate Itinerary
               </Button>
 
@@ -386,9 +555,10 @@ export default function CreatePage() {
 
       {step === 'personalization' && (
         <PersonalizationChatInterface
-          destination={displayDestination || tripDescription.trim()}
+          destination={displayDestination || 'Your trip'}
           importedPlaces={importedPlaceNames}
           duration={tripDuration}
+          itineraryText={tripDescription}
           onBack={() => setStep(extractedPlaces.length > 0 ? 'review-extracted' : 'hero')}
           onComplete={handlePersonalizationComplete}
           onSkip={handlePersonalizationSkip}

@@ -12,6 +12,7 @@ export interface PromptBuilderState {
   customText: string;
   isEdited: boolean;
   destination: string;
+  itineraryText: string;
   importedPlaces: string[];
 }
 
@@ -45,7 +46,11 @@ const PACE_LABELS: Record<string, string> = {
   packed: 'action-packed',
 };
 
-export function usePromptBuilder(initialDestination: string = '', initialImportedPlaces: string[] = []) {
+export function usePromptBuilder(
+  initialDestination: string = '',
+  initialImportedPlaces: string[] = [],
+  initialItineraryText: string = ''
+) {
   const [state, setState] = useState<PromptBuilderState>({
     quickSelections: {
       purposes: [],
@@ -56,15 +61,20 @@ export function usePromptBuilder(initialDestination: string = '', initialImporte
     customText: '',
     isEdited: false,
     destination: initialDestination,
+    itineraryText: initialItineraryText,
     importedPlaces: initialImportedPlaces,
   });
 
-  const generatedPrompt = useMemo(() => {
-    const { quickSelections, destination, importedPlaces } = state;
+  const prePrompt = useMemo(() => {
+    const { quickSelections, destination } = state;
     const parts: string[] = [];
+    const hasTraveler = Boolean(quickSelections.travelers);
+    const hasPurposes = quickSelections.purposes.length > 0;
+    const hasBudget = Boolean(quickSelections.budget);
+    const hasPace = Boolean(quickSelections.pace);
 
     // Traveler intro
-    if (quickSelections.travelers) {
+    if (hasTraveler) {
       parts.push(`I'm traveling as ${TRAVELER_LABELS[quickSelections.travelers] || quickSelections.travelers}`);
     } else {
       parts.push("I'm planning a trip");
@@ -76,7 +86,7 @@ export function usePromptBuilder(initialDestination: string = '', initialImporte
     }
 
     // Purposes
-    if (quickSelections.purposes.length > 0) {
+    if (hasPurposes) {
       const purposeTexts = quickSelections.purposes.map(p => PURPOSE_LABELS[p] || p);
       if (purposeTexts.length === 1) {
         parts.push(`I love ${purposeTexts[0]}`);
@@ -88,25 +98,33 @@ export function usePromptBuilder(initialDestination: string = '', initialImporte
 
     // Budget and pace
     const modifiers: string[] = [];
-    if (quickSelections.budget) {
+    if (hasBudget) {
       modifiers.push(`a ${BUDGET_LABELS[quickSelections.budget] || quickSelections.budget} budget`);
     }
-    if (quickSelections.pace) {
+    if (hasPace) {
       modifiers.push(`a ${PACE_LABELS[quickSelections.pace] || quickSelections.pace} pace`);
     }
     if (modifiers.length > 0) {
       parts.push(`Looking for ${modifiers.join(' with ')}`);
     }
 
-    // Imported places context
-    if (importedPlaces.length > 0) {
-      parts.push(`Based on the places I've already added (${importedPlaces.slice(0, 3).join(', ')}${importedPlaces.length > 3 ? '...' : ''}), suggest more spots that match my interests`);
-    } else {
+    if (hasTraveler || hasPurposes || hasBudget || hasPace) {
       parts.push('Suggest places that match my interests');
     }
 
     return parts.join('. ') + '.';
   }, [state]);
+
+  const generatedPrompt = useMemo(() => {
+    const sections: string[] = [];
+    if (prePrompt.trim()) {
+      sections.push(prePrompt);
+    }
+    if (state.itineraryText.trim()) {
+      sections.push(state.itineraryText);
+    }
+    return sections.join('\n\n');
+  }, [prePrompt, state.itineraryText]);
 
   const displayPrompt = useMemo(() => {
     return state.isEdited ? state.customText : generatedPrompt;
@@ -129,7 +147,6 @@ export function usePromptBuilder(initialDestination: string = '', initialImporte
           ? prev.quickSelections.purposes.filter(p => p !== purpose)
           : [...prev.quickSelections.purposes, purpose],
       },
-      isEdited: false, // Reset to auto-generated when pills change
     }));
   }, []);
 
@@ -137,7 +154,6 @@ export function usePromptBuilder(initialDestination: string = '', initialImporte
     setState(prev => ({
       ...prev,
       quickSelections: { ...prev.quickSelections, travelers },
-      isEdited: false,
     }));
   }, []);
 
@@ -145,7 +161,6 @@ export function usePromptBuilder(initialDestination: string = '', initialImporte
     setState(prev => ({
       ...prev,
       quickSelections: { ...prev.quickSelections, budget },
-      isEdited: false,
     }));
   }, []);
 
@@ -153,8 +168,11 @@ export function usePromptBuilder(initialDestination: string = '', initialImporte
     setState(prev => ({
       ...prev,
       quickSelections: { ...prev.quickSelections, pace },
-      isEdited: false,
     }));
+  }, []);
+
+  const setItineraryText = useCallback((itineraryText: string) => {
+    setState(prev => ({ ...prev, itineraryText }));
   }, []);
 
   const setCustomPrompt = useCallback((text: string) => {
@@ -196,5 +214,6 @@ export function usePromptBuilder(initialDestination: string = '', initialImporte
     applyTemplate,
     setDestination,
     setImportedPlaces,
+    setItineraryText,
   };
 }

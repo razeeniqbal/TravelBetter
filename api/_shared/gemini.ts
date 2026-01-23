@@ -9,6 +9,10 @@ export function getGeminiUrl(apiKey: string) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 }
 
+export function getGeminiUrlWithModel(apiKey: string, model: string) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+}
+
 function escapeControlCharsInStrings(input: string) {
   let output = '';
   let inString = false;

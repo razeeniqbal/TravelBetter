@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getGeminiUrl, parseGeminiJson } from './_shared/gemini.js';
+import { getGeminiUrl, getGeminiUrlWithModel, parseGeminiJson } from './_shared/gemini.js';
 
 interface ExtractedPlace {
   name: string;
@@ -31,11 +31,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Text is required' });
     }
 
-    const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+    const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY_TEXT_EXTRACT || process.env.GOOGLE_API_KEY;
     if (!GOOGLE_API_KEY) {
       console.error('GOOGLE_API_KEY is not configured');
       return res.status(500).json({ error: 'AI service not configured' });
     }
+
+    const textExtractionModel = process.env.GEMINI_TEXT_EXT_MODEL;
 
     console.log('Extracting places from text itinerary');
 
@@ -78,7 +80,11 @@ Focus on specific named locations and ignore dates/times unless they clarify the
 
 Respond ONLY with valid JSON, no markdown or extra text.`;
 
-    const response = await fetch(getGeminiUrl(GOOGLE_API_KEY), {
+    const response = await fetch(
+      textExtractionModel
+        ? getGeminiUrlWithModel(GOOGLE_API_KEY, textExtractionModel)
+        : getGeminiUrl(GOOGLE_API_KEY),
+      {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Sparkles, BookOpen, MapPin, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Sparkles, BookOpen, Minus, Plus } from 'lucide-react';
 import { usePromptBuilder } from '@/hooks/usePromptBuilder';
 import { QuickSelectPills } from './QuickSelectPills';
 import { PromptTextArea } from './PromptTextArea';
@@ -16,19 +16,19 @@ type ChatStep = 'customize' | 'preview' | 'loading' | 'suggestions';
 
 interface PersonalizationChatInterfaceProps {
   destination: string;
-  importedPlaces: string[];
+  seedPlaces: string[];
   duration: number;
-  itineraryText: string;
+  rawItineraryText: string;
   onBack: () => void;
-  onComplete: (selectedPlaces: AISuggestion[], days: number, resolvedDestination?: string) => void;
-  onSkip: (days: number) => void;
+  onComplete: (selectedPlaces: AISuggestion[], days: number, resolvedDestination: string | undefined, userPlaces: string[]) => void;
+  onSkip: (days: number, userPlaces: string[]) => void;
 }
 
 export function PersonalizationChatInterface({
   destination,
-  importedPlaces,
+  seedPlaces,
   duration,
-  itineraryText,
+  rawItineraryText,
   onBack,
   onComplete,
   onSkip,
@@ -40,6 +40,7 @@ export function PersonalizationChatInterface({
   const [resolvedDestination, setResolvedDestination] = useState<string>();
   const [processingTime, setProcessingTime] = useState<number>();
   const [tripDays, setTripDays] = useState(duration || 3);
+  const [finalizedPlaces, setFinalizedPlaces] = useState<string[]>([]);
 
   const {
     state,
@@ -53,7 +54,44 @@ export function PersonalizationChatInterface({
     setCustomPrompt,
     resetToGenerated,
     applyTemplate,
-  } = usePromptBuilder(destination, importedPlaces, itineraryText);
+  } = usePromptBuilder(destination, seedPlaces, rawItineraryText);
+
+  const parsePlacesFromPrompt = (prompt: string, fallback: string[]): string[] => {
+    const lines = prompt.split(/\r?\n/).map(line => line.trim());
+    const extracted: string[] = [];
+    const seen = new Set<string>();
+    const headerIndex = lines.findIndex(line => /places from my itinerary/i.test(line));
+
+    const pushPlace = (value: string) => {
+      const cleaned = value.replace(/^[-*•]\s*/, '').trim();
+      if (!cleaned) return;
+      const key = cleaned.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      extracted.push(cleaned);
+    };
+
+    if (headerIndex >= 0) {
+      for (let i = headerIndex + 1; i < lines.length; i += 1) {
+        const line = lines[i];
+        if (!line) {
+          if (extracted.length > 0) break;
+          continue;
+        }
+        pushPlace(line);
+      }
+    }
+
+    if (extracted.length === 0) {
+      for (const line of lines) {
+        if (/^[-*•]\s+/.test(line)) {
+          pushPlace(line);
+        }
+      }
+    }
+
+    return extracted.length > 0 ? extracted : fallback;
+  };
 
   const handleGetSuggestions = async () => {
     if (!isValid) {
@@ -69,15 +107,17 @@ export function PersonalizationChatInterface({
 
     setChatStep('loading');
     const startTime = Date.now();
+    const parsedPlaces = parsePlacesFromPrompt(displayPrompt, seedPlaces);
+    setFinalizedPlaces(parsedPlaces);
 
     try {
       const { data, error } = await api.generateAISuggestions({
         destination,
         userPrompt: displayPrompt,
         quickSelections: state.quickSelections as unknown as Record<string, unknown>,
-        importedPlaces: importedPlaces,
+        importedPlaces: parsedPlaces,
         duration: tripDays,
-        existingPlaces: importedPlaces.map(name => ({ name })),
+        existingPlaces: parsedPlaces.map(name => ({ name })),
         preferences: {
           purposes: state.quickSelections.purposes,
           travelers: state.quickSelections.travelers,
@@ -135,11 +175,16 @@ export function PersonalizationChatInterface({
 
   const handleContinue = () => {
     const selectedPlaces = suggestions.filter(s => s.accepted);
-    onComplete(selectedPlaces, tripDays, resolvedDestination);
+    const parsedPlaces = finalizedPlaces.length > 0
+      ? finalizedPlaces
+      : parsePlacesFromPrompt(displayPrompt, seedPlaces);
+    onComplete(selectedPlaces, tripDays, resolvedDestination, parsedPlaces);
   };
 
   const handleSkip = () => {
-    onSkip(tripDays);
+    const parsedPlaces = parsePlacesFromPrompt(displayPrompt, seedPlaces);
+    setFinalizedPlaces(parsedPlaces);
+    onSkip(tripDays, parsedPlaces);
   };
 
   return (
@@ -176,18 +221,6 @@ export function PersonalizationChatInterface({
       </header>
 
       <div className="p-4 pb-24 space-y-6">
-        {/* Imported Places Summary */}
-        {importedPlaces.length > 0 && chatStep !== 'suggestions' && (
-          <Card className="p-3 bg-secondary/30 border-secondary">
-            <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-secondary-foreground" />
-              <span className="text-sm text-secondary-foreground">
-                {importedPlaces.length} place{importedPlaces.length > 1 ? 's' : ''} already added
-              </span>
-            </div>
-          </Card>
-        )}
-
         {/* Customize Step */}
         {chatStep === 'customize' && (
           <>
@@ -270,7 +303,7 @@ export function PersonalizationChatInterface({
         {chatStep === 'preview' && (
           <PromptPreview
             prompt={displayPrompt}
-            importedPlaces={importedPlaces}
+            importedPlaces={[]}
             onEdit={() => setChatStep('customize')}
             onSubmit={handleGetSuggestions}
           />
@@ -298,7 +331,7 @@ export function PersonalizationChatInterface({
             suggestions={suggestions}
             promptInterpretation={promptInterpretation}
             processingTime={processingTime}
-            requiredPlaces={importedPlaces}
+            requiredPlaces={finalizedPlaces}
             onAccept={handleAccept}
             onReject={handleReject}
             onAcceptAll={handleAcceptAll}

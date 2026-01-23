@@ -13,7 +13,7 @@ export interface PromptBuilderState {
   isEdited: boolean;
   destination: string;
   itineraryText: string;
-  importedPlaces: string[];
+  seedPlaces: string[];
 }
 
 const PURPOSE_LABELS: Record<string, string> = {
@@ -48,7 +48,7 @@ const PACE_LABELS: Record<string, string> = {
 
 export function usePromptBuilder(
   initialDestination: string = '',
-  initialImportedPlaces: string[] = [],
+  initialSeedPlaces: string[] = [],
   initialItineraryText: string = ''
 ) {
   const [state, setState] = useState<PromptBuilderState>({
@@ -62,7 +62,7 @@ export function usePromptBuilder(
     isEdited: false,
     destination: initialDestination,
     itineraryText: initialItineraryText,
-    importedPlaces: initialImportedPlaces,
+    seedPlaces: initialSeedPlaces,
   });
 
   const prePrompt = useMemo(() => {
@@ -115,16 +115,24 @@ export function usePromptBuilder(
     return parts.join('. ') + '.';
   }, [state]);
 
+  const itineraryBlock = useMemo(() => {
+    if (state.seedPlaces.length > 0) {
+      const lines = state.seedPlaces.map(place => `- ${place}`);
+      return ['Places from my itinerary:', ...lines].join('\n');
+    }
+    return state.itineraryText.trim();
+  }, [state.seedPlaces, state.itineraryText]);
+
   const generatedPrompt = useMemo(() => {
     const sections: string[] = [];
     if (prePrompt.trim()) {
       sections.push(prePrompt);
     }
-    if (state.itineraryText.trim()) {
-      sections.push(state.itineraryText);
+    if (itineraryBlock) {
+      sections.push(itineraryBlock);
     }
     return sections.join('\n\n');
-  }, [prePrompt, state.itineraryText]);
+  }, [prePrompt, itineraryBlock]);
 
   const displayPrompt = useMemo(() => {
     return state.isEdited ? state.customText : generatedPrompt;
@@ -134,8 +142,8 @@ export function usePromptBuilder(
     setState(prev => ({ ...prev, destination }));
   }, []);
 
-  const setImportedPlaces = useCallback((places: string[]) => {
-    setState(prev => ({ ...prev, importedPlaces: places }));
+  const setSeedPlaces = useCallback((places: string[]) => {
+    setState(prev => ({ ...prev, seedPlaces: places }));
   }, []);
 
   const togglePurpose = useCallback((purpose: string) => {
@@ -213,7 +221,7 @@ export function usePromptBuilder(
     resetToGenerated,
     applyTemplate,
     setDestination,
-    setImportedPlaces,
+    setSeedPlaces,
     setItineraryText,
   };
 }

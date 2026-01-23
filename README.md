@@ -55,6 +55,8 @@ VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 # Google AI (for serverless functions - used in production via Vercel env vars)
 GOOGLE_API_KEY=your_google_api_key
 GEMINI_MODEL=gemini-2.0-flash
+GOOGLE_API_KEY_TEXT_EXTRACT=your_google_api_key
+GEMINI_TEXT_EXT_MODEL=gemini-2.0-flash
 ```
 
 ## Available Scripts
@@ -86,6 +88,8 @@ In Vercel Dashboard → Project Settings → Environment Variables, add:
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Your Supabase anon/public key |
 | `GOOGLE_API_KEY` | Your Google AI API key (for Gemini) |
 | `GEMINI_MODEL` | Optional Gemini model name (defaults to `gemini-2.0-flash`) |
+| `GOOGLE_API_KEY_TEXT_EXTRACT` | Optional key override for text extraction (fallbacks to `GOOGLE_API_KEY`) |
+| `GEMINI_TEXT_EXT_MODEL` | Optional model override for text extraction (fallbacks to `GEMINI_MODEL`) |
 
 ### 3. Deploy
 

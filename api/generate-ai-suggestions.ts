@@ -95,11 +95,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 Your suggestions should:
 1. Complement the user's existing itinerary without duplicating places
-2. Match the user's stated interests and preferences closely
-3. Consider the travel style, budget, and pace preferences
-4. Include a mix of popular and hidden gem spots
-5. Be logistically practical (nearby to existing places when possible)
-6. Include local favorites and authentic experiences
+2. Never suggest a place listed as already planned or already in the itinerary
+3. Match the user's stated interests and preferences closely
+4. Consider the travel style, budget, and pace preferences
+5. Include a mix of popular and hidden gem spots
+6. Be logistically practical (nearby to existing places when possible)
+7. Include local favorites and authentic experiences
 
 For each suggestion, provide:
 - A confidence score (0-100) based on how well it matches the user's specific preferences
@@ -131,11 +132,11 @@ You MUST respond with a valid JSON object in this exact format:
   ]
 }`;
 
-    const promptText = `Suggest 5-8 places to visit in ${destination} for a ${duration}-day trip.
+    const promptText = `Suggest 5-8 additional places to visit in ${destination} for a ${duration}-day trip.
 
 ${contextParts.join('\n\n')}
 
-Generate personalized suggestions that directly address what the user is looking for. Be specific about why each place matches their preferences.
+Generate personalized suggestions that directly address what the user is looking for. If places are already listed, treat them as required stops and only suggest new complementary options. Be specific about why each place matches their preferences.
 
 Respond ONLY with valid JSON, no markdown or extra text.`;
 

@@ -28,6 +28,7 @@ interface AISuggestionsListProps {
   suggestions: AISuggestion[];
   promptInterpretation?: string;
   processingTime?: number;
+  requiredPlaces?: string[];
   onAccept: (index: number) => void;
   onReject: (index: number) => void;
   onAcceptAll: () => void;
@@ -38,6 +39,7 @@ export function AISuggestionsList({
   suggestions,
   promptInterpretation,
   processingTime,
+  requiredPlaces = [],
   onAccept,
   onReject,
   onAcceptAll,
@@ -45,6 +47,13 @@ export function AISuggestionsList({
 }: AISuggestionsListProps) {
   const acceptedCount = suggestions.filter(s => s.accepted).length;
   const pendingCount = suggestions.filter(s => !s.accepted && !s.rejected).length;
+  const requiredCount = requiredPlaces.length;
+  const canContinue = acceptedCount > 0 || requiredCount > 0;
+  const continueLabel = acceptedCount > 0
+    ? `Continue with ${acceptedCount} Place${acceptedCount !== 1 ? 's' : ''}`
+    : requiredCount > 0
+      ? `Continue with ${requiredCount} Place${requiredCount !== 1 ? 's' : ''}`
+      : 'Continue';
 
   return (
     <div className="space-y-4">
@@ -71,6 +80,32 @@ export function AISuggestionsList({
             <span className="font-medium">AI understood: </span>
             {promptInterpretation}
           </p>
+        </Card>
+      )}
+
+      {requiredCount > 0 && (
+        <Card className="p-3 bg-secondary/30 border-secondary">
+          <div className="flex items-center gap-2 text-sm">
+            <MapPin className="h-4 w-4 text-secondary-foreground" />
+            <span className="text-secondary-foreground font-medium">
+              {requiredCount} place{requiredCount !== 1 ? 's' : ''} already included
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {requiredPlaces.slice(0, 5).map((place, index) => (
+              <span
+                key={index}
+                className="text-xs bg-secondary px-2 py-1 rounded-full text-secondary-foreground"
+              >
+                {place}
+              </span>
+            ))}
+            {requiredCount > 5 && (
+              <span className="text-xs text-secondary-foreground px-2 py-1">
+                +{requiredCount - 5} more
+              </span>
+            )}
+          </div>
         </Card>
       )}
 
@@ -204,9 +239,9 @@ export function AISuggestionsList({
         <Button
           onClick={onContinue}
           className="w-full"
-          disabled={acceptedCount === 0}
+          disabled={!canContinue}
         >
-          Continue with {acceptedCount} Place{acceptedCount !== 1 ? 's' : ''}
+          {continueLabel}
         </Button>
       </div>
     </div>

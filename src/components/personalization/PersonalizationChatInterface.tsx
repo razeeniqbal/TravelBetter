@@ -18,6 +18,7 @@ interface PersonalizationChatInterfaceProps {
   destination: string;
   importedPlaces: string[];
   duration: number;
+  itineraryText: string;
   onBack: () => void;
   onComplete: (selectedPlaces: AISuggestion[], days: number, resolvedDestination?: string) => void;
   onSkip: (days: number) => void;
@@ -27,6 +28,7 @@ export function PersonalizationChatInterface({
   destination,
   importedPlaces,
   duration,
+  itineraryText,
   onBack,
   onComplete,
   onSkip,
@@ -51,7 +53,7 @@ export function PersonalizationChatInterface({
     setCustomPrompt,
     resetToGenerated,
     applyTemplate,
-  } = usePromptBuilder(destination, importedPlaces);
+  } = usePromptBuilder(destination, importedPlaces, itineraryText);
 
   const handleGetSuggestions = async () => {
     if (!isValid) {
@@ -72,7 +74,7 @@ export function PersonalizationChatInterface({
       const { data, error } = await api.generateAISuggestions({
         destination,
         userPrompt: displayPrompt,
-        quickSelections: state.quickSelections,
+        quickSelections: state.quickSelections as unknown as Record<string, unknown>,
         importedPlaces: importedPlaces,
         duration: tripDays,
         existingPlaces: importedPlaces.map(name => ({ name })),
@@ -296,6 +298,7 @@ export function PersonalizationChatInterface({
             suggestions={suggestions}
             promptInterpretation={promptInterpretation}
             processingTime={processingTime}
+            requiredPlaces={importedPlaces}
             onAccept={handleAccept}
             onReject={handleReject}
             onAcceptAll={handleAcceptAll}

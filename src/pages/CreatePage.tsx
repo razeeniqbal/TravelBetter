@@ -2,23 +2,20 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { 
-  Link2, Mic, Camera, Sparkles, ArrowLeft, 
-  Loader2, X, Check
+  Link2, Mic, Camera, Sparkles, 
+  Loader2
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useCreateTripWithPlaces, type PlaceInput } from '@/hooks/useUserTrips';
 import { api } from '@/lib/api';
 import { PersonalizationChatInterface } from '@/components/personalization/PersonalizationChatInterface';
 import type { AISuggestion } from '@/components/personalization/AISuggestionsList';
 
-type FlowStep = 'hero' | 'review-extracted' | 'personalization' | 'generating';
+type FlowStep = 'hero' | 'personalization' | 'generating';
 
 interface ExtractedPlace {
   name: string;
@@ -26,7 +23,6 @@ interface ExtractedPlace {
   category: string;
   description?: string;
   tips?: string[];
-  selected?: boolean;
   latitude?: number;
   longitude?: number;
 }
@@ -149,7 +145,6 @@ function extractFallbackPlaces(description: string): ExtractedPlace[] {
     places.push({
       name: cleaned,
       category: 'attraction',
-      selected: true,
     });
   }
 
@@ -187,17 +182,7 @@ export default function CreatePage() {
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [extractedPlaces, setExtractedPlaces] = useState<ExtractedPlace[]>([]);
-  const [extractSummary, setExtractSummary] = useState('');
   const [extractedDestination, setExtractedDestination] = useState('');
-  
-  // AI suggestions state
-  const [aiSelectedPlaces, setAiSelectedPlaces] = useState<AISuggestion[]>([]);
-
-  const toggleExtractedPlace = (index: number) => {
-    setExtractedPlaces(prev => 
-      prev.map((p, i) => i === index ? { ...p, selected: !p.selected } : p)
-    );
-  };
 
   const handleScreenshotUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -220,9 +205,8 @@ export default function CreatePage() {
         if (error) throw error;
 
         if (data?.places && data.places.length > 0) {
-          setExtractedPlaces(data.places.map((p: ExtractedPlace) => ({ ...p, selected: true })));
-          setExtractSummary(data.summary || `Found ${data.places.length} places`);
-          setStep('review-extracted');
+          setExtractedPlaces(data.places);
+          setStep('personalization');
           toast.success(`Extracted ${data.places.length} places from screenshot`);
         } else {
           toast.info('No places found in the image. Try a different screenshot.');
@@ -259,9 +243,8 @@ export default function CreatePage() {
       if (error) throw error;
 
       if (data?.places && data.places.length > 0) {
-        setExtractedPlaces(data.places.map((p: ExtractedPlace) => ({ ...p, selected: true })));
-        setExtractSummary(data.summary || `Found ${data.places.length} places from ${data.sourceType}`);
-        setStep('review-extracted');
+        setExtractedPlaces(data.places);
+        setStep('personalization');
         toast.success(`Extracted ${data.places.length} places from URL`);
       } else {
         toast.info('No places found from this URL. Try a different link.');
@@ -275,25 +258,25 @@ export default function CreatePage() {
     }
   };
 
-  const handleConfirmExtracted = () => {
-    // Move to personalization step with imported places
-    setStep('personalization');
-  };
-
   const handlePersonalizationComplete = (
     selectedPlaces: AISuggestion[],
     days: number,
-    resolvedDestination?: string
+    resolvedDestination?: string,
+    userPlaces: string[] = []
   ) => {
-    setAiSelectedPlaces(selectedPlaces);
-    handleGenerateTrip(selectedPlaces, days, resolvedDestination);
+    handleGenerateTrip(selectedPlaces, days, resolvedDestination, userPlaces);
   };
 
-  const handlePersonalizationSkip = (days: number) => {
-    handleGenerateTrip([], days);
+  const handlePersonalizationSkip = (days: number, userPlaces: string[] = []) => {
+    handleGenerateTrip([], days, undefined, userPlaces);
   };
 
-  const handleGenerateTrip = async (aiPlaces: AISuggestion[], days?: number, resolvedDestination?: string) => {
+  const handleGenerateTrip = async (
+    aiPlaces: AISuggestion[],
+    days?: number,
+    resolvedDestination?: string,
+    userPlaces?: string[]
+  ) => {
     setStep('generating');
 
     // Use resolved destination from AI or extract from description
@@ -302,20 +285,25 @@ export default function CreatePage() {
     const finalDuration = days || parseDuration(tripDescription);
 
     // Combine imported and AI-selected places into PlaceInput objects
-    const importedPlaceInputs: PlaceInput[] = extractedPlaces
-      .filter(p => p.selected)
-      .map(p => ({
-        name: p.name,
-        nameLocal: p.nameLocal,
-        category: p.category || 'attraction',
-        description: p.description,
-        tips: p.tips,
+    const finalUserPlaces = userPlaces ?? extractedPlaces.map(p => p.name);
+    const extractedByName = new Map(
+      extractedPlaces.map(place => [place.name.toLowerCase(), place])
+    );
+    const importedPlaceInputs: PlaceInput[] = finalUserPlaces.map(name => {
+      const match = extractedByName.get(name.toLowerCase());
+      return {
+        name,
+        nameLocal: match?.nameLocal,
+        category: match?.category || 'attraction',
+        description: match?.description,
+        tips: match?.tips,
         source: 'user' as const,
         coordinates:
-          typeof p.latitude === 'number' && typeof p.longitude === 'number'
-            ? { lat: p.latitude, lng: p.longitude }
+          typeof match?.latitude === 'number' && typeof match?.longitude === 'number'
+            ? { lat: match.latitude, lng: match.longitude }
             : undefined,
-      }));
+      };
+    });
 
     const aiPlaceInputs: PlaceInput[] = aiPlaces.map(p => ({
       name: p.name,
@@ -371,7 +359,6 @@ export default function CreatePage() {
     setIsImporting(true);
     setImportType('text');
     setExtractedPlaces([]);
-    setExtractSummary('');
     setExtractedDestination('');
 
     const destinationSeed = getDisplayDestination(tripDescription);
@@ -384,14 +371,12 @@ export default function CreatePage() {
       );
 
       const resolvedDestination = data?.destination || destinationSeed;
-      const resolvedSummary = data?.summary || '';
 
       if (error) {
         if (fallbackPlaces.length > 0) {
           setExtractedPlaces(fallbackPlaces);
-          setExtractSummary(resolvedSummary || `Found ${fallbackPlaces.length} places from your itinerary`);
           setExtractedDestination(resolvedDestination || destinationSeed);
-          setStep('review-extracted');
+          setStep('personalization');
           toast.success(`Captured ${fallbackPlaces.length} places from your itinerary`);
           return;
         }
@@ -400,28 +385,23 @@ export default function CreatePage() {
 
       const extracted = data?.places || [];
       if (extracted.length > 0) {
-        setExtractedPlaces(extracted.map((p: ExtractedPlace) => ({ ...p, selected: true })));
-        setExtractSummary(resolvedSummary || `Found ${extracted.length} places from your itinerary`);
+        setExtractedPlaces(extracted);
         setExtractedDestination(resolvedDestination || destinationSeed);
-        setStep('review-extracted');
+        setStep('personalization');
         toast.success(`Extracted ${extracted.length} places from your itinerary`);
         return;
       }
 
       if (fallbackPlaces.length > 0) {
         setExtractedPlaces(fallbackPlaces);
-        setExtractSummary(resolvedSummary || `Found ${fallbackPlaces.length} places from your itinerary`);
         setExtractedDestination(resolvedDestination || destinationSeed);
-        setStep('review-extracted');
+        setStep('personalization');
         toast.success(`Captured ${fallbackPlaces.length} places from your itinerary`);
         return;
       }
 
       if (resolvedDestination) {
         setExtractedDestination(resolvedDestination);
-      }
-      if (resolvedSummary) {
-        setExtractSummary(resolvedSummary);
       }
       toast.info('We could not find specific places, but you can continue with your itinerary.');
       setStep('personalization');
@@ -450,7 +430,7 @@ export default function CreatePage() {
   // Extract basic destination for display (AI will resolve the actual destination)
   const displayDestination = getDisplayDestination(tripDescription, extractedDestination);
   const tripDuration = parseDuration(tripDescription);
-  const importedPlaceNames = extractedPlaces.filter(p => p.selected).map(p => p.name);
+  const seedPlaceNames = extractedPlaces.map(p => p.name);
 
   return (
     <div className="min-h-screen pb-24">
@@ -556,10 +536,10 @@ export default function CreatePage() {
       {step === 'personalization' && (
         <PersonalizationChatInterface
           destination={displayDestination || 'Your trip'}
-          importedPlaces={importedPlaceNames}
+          seedPlaces={seedPlaceNames}
+          rawItineraryText={tripDescription}
           duration={tripDuration}
-          itineraryText={tripDescription}
-          onBack={() => setStep(extractedPlaces.length > 0 ? 'review-extracted' : 'hero')}
+          onBack={() => setStep('hero')}
           onComplete={handlePersonalizationComplete}
           onSkip={handlePersonalizationSkip}
         />
@@ -575,83 +555,6 @@ export default function CreatePage() {
           <p className="mt-2 text-sm text-muted-foreground animate-pulse">
             Analyzing preferences, optimizing routes...
           </p>
-        </div>
-      )}
-
-      {step === 'review-extracted' && (
-        <div className="bg-background">
-          {/* Header */}
-          <header className="flex items-center justify-between border-b px-4 py-4">
-            <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => setStep('hero')}
-                className="rounded-full"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <h1 className="text-lg font-semibold">Review Places</h1>
-            </div>
-          </header>
-
-          <div className="p-4">
-            <p className="text-sm text-muted-foreground mb-4">{extractSummary}</p>
-            
-            <div className="space-y-3">
-              {extractedPlaces.map((place, index) => (
-                <Card 
-                  key={index}
-                  className={cn(
-                    'p-4 cursor-pointer transition-all',
-                    place.selected 
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary' 
-                      : 'opacity-60'
-                  )}
-                  onClick={() => toggleExtractedPlace(index)}
-                >
-                  <div className="flex items-start gap-3">
-                    <Checkbox 
-                      checked={place.selected} 
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{place.name}</span>
-                        {place.nameLocal && (
-                          <span className="text-sm text-muted-foreground">{place.nameLocal}</span>
-                        )}
-                      </div>
-                      <span className="text-xs text-primary capitalize">{place.category}</span>
-                      {place.description && (
-                        <p className="text-sm text-muted-foreground mt-1">{place.description}</p>
-                      )}
-                      {place.tips && place.tips.length > 0 && (
-                        <p className="text-xs text-amber-600 mt-1">💡 {place.tips[0]}</p>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <Button 
-                variant="outline"
-                className="flex-1"
-                onClick={() => setStep('hero')}
-              >
-                Cancel
-              </Button>
-              <Button 
-                className="flex-1 gap-2"
-                onClick={handleConfirmExtracted}
-              >
-                <Check className="h-4 w-4" />
-                Continue with {extractedPlaces.filter(p => p.selected).length} Places
-              </Button>
-            </div>
-          </div>
         </div>
       )}
 

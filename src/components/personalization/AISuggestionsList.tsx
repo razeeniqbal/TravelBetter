@@ -48,12 +48,15 @@ export function AISuggestionsList({
   const acceptedCount = suggestions.filter(s => s.accepted).length;
   const pendingCount = suggestions.filter(s => !s.accepted && !s.rejected).length;
   const requiredCount = requiredPlaces.length;
+  const totalSelectedCount = acceptedCount + requiredCount;
   const canContinue = acceptedCount > 0 || requiredCount > 0;
-  const continueLabel = acceptedCount > 0
-    ? `Continue with ${acceptedCount} Place${acceptedCount !== 1 ? 's' : ''}`
-    : requiredCount > 0
-      ? `Continue with ${requiredCount} Place${requiredCount !== 1 ? 's' : ''}`
-      : 'Continue';
+  const continueLabel = totalSelectedCount > 0
+    ? acceptedCount > 0 && requiredCount > 0
+      ? `Continue with ${acceptedCount} added (${totalSelectedCount} total)`
+      : acceptedCount > 0
+        ? `Continue with ${acceptedCount} added`
+        : `Continue with ${requiredCount} place${requiredCount !== 1 ? 's' : ''}`
+    : 'Continue';
 
   return (
     <div className="space-y-4">

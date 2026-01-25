@@ -4,6 +4,9 @@ import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Map, MapControls, MapMarker, MapRoute, MarkerContent, MarkerTooltip, useMap } from '@/components/ui/map';
 import { cn } from '@/lib/utils';
+import { geocodePlaceCoordinates } from '@/lib/geocode';
+import { AUTH_DISABLED } from '@/lib/flags';
+import { supabase } from '@/integrations/supabase/client';
 import type { Place } from '@/types/trip';
 
 interface MapPlaceholderProps {
@@ -89,22 +92,58 @@ export function MapPlaceholder({
   controlsPosition = 'top-right',
 }: MapPlaceholderProps) {
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const [fallbackCoordinates, setFallbackCoordinates] = useState<Record<string, { lat: number; lng: number }>>({});
   const resolvedPlaces = useMemo(
     () =>
       places
         .map((place, index) => {
-          const coords = place.coordinates;
+          const coords = place.coordinates || fallbackCoordinates[place.id];
           if (!coords) return null;
           return { place, coords, index };
         })
         .filter((place): place is { place: Place; coords: { lat: number; lng: number }; index: number } => Boolean(place)),
-    [places]
+    [places, fallbackCoordinates]
   );
   const routeRequest = useMemo(
     () => resolvedPlaces.map(({ coords }) => [coords.lng, coords.lat] as [number, number]),
     [resolvedPlaces]
   );
   const routeKey = useMemo(() => routeRequest.map((pair) => pair.join(',')).join(';'), [routeRequest]);
+
+  useEffect(() => {
+    let isActive = true;
+    const missingPlaces = places.filter(
+      (place) => !place.coordinates && !fallbackCoordinates[place.id]
+    );
+    if (missingPlaces.length === 0) return;
+
+    const resolveMissingCoords = async () => {
+      const updates: Record<string, { lat: number; lng: number }> = {};
+      for (const place of missingPlaces) {
+        const coords = await geocodePlaceCoordinates(place.name, destination);
+        if (!coords) continue;
+        updates[place.id] = coords;
+
+        if (!AUTH_DISABLED) {
+          const { error } = await supabase
+            .from('places')
+            .update({ latitude: coords.lat, longitude: coords.lng })
+            .eq('id', place.id);
+          if (error) {
+            console.error('Failed to update place coordinates:', error);
+          }
+        }
+      }
+
+      if (!isActive || Object.keys(updates).length === 0) return;
+      setFallbackCoordinates((prev) => ({ ...prev, ...updates }));
+    };
+
+    void resolveMissingCoords();
+    return () => {
+      isActive = false;
+    };
+  }, [places, destination, fallbackCoordinates]);
 
   useEffect(() => {
     if (resolvedPlaces.length < 2) {

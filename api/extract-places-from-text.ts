@@ -43,6 +43,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const systemPrompt = `You are a travel assistant that extracts place names and destinations from messy itinerary text.
 
+When given raw itinerary notes, first infer the primary destination city/region and country. Then extract places that belong to that destination.
+
 When given raw itinerary notes, extract:
 1. Place names (restaurants, attractions, hotels, shops, temples, etc.)
 2. Local names if included
@@ -51,7 +53,9 @@ When given raw itinerary notes, extract:
 5. Any tips or recommendations mentioned
 6. Geographic coordinates (latitude and longitude in decimal degrees)
 7. If coordinates are unknown, set latitude and longitude to null
-8. A concise destination label if the city or region is obvious
+8. A concise destination label with city/region and country if clear
+
+Only include places that are located in the inferred destination or its immediate area. If a place is ambiguous or outside the destination, exclude it.
 
 You MUST respond with a valid JSON object in this exact format:
 {
@@ -76,7 +80,7 @@ ${text}
 
 ${destination ? `The user is planning a trip to ${destination}.` : ''}
 
-Focus on specific named locations and ignore dates/times unless they clarify the place.
+Focus on specific named locations and ignore dates/times unless they clarify the place. Use the destination to disambiguate and ensure places belong to the same location/country.
 
 Respond ONLY with valid JSON, no markdown or extra text.`;
 

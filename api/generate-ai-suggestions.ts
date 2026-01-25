@@ -16,6 +16,28 @@ interface SuggestedPlace {
   longitude?: number;
 }
 
+const RETRY_STATUS_CODES = new Set([429, 500, 503]);
+const MAX_RETRIES = 2;
+const BASE_DELAY_MS = 400;
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry(url: string, options: RequestInit) {
+  let attempt = 0;
+
+  while (true) {
+    const response = await fetch(url, options);
+    if (response.ok || !RETRY_STATUS_CODES.has(response.status) || attempt >= MAX_RETRIES) {
+      return response;
+    }
+
+    const jitter = Math.floor(Math.random() * 200);
+    const delay = BASE_DELAY_MS * Math.pow(2, attempt) + jitter;
+    await wait(delay);
+    attempt += 1;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -141,7 +163,7 @@ Generate personalized suggestions that directly address what the user is looking
 Respond ONLY with valid JSON, no markdown or extra text.`;
 
     // Call Google Gemini API
-    const response = await fetch(getGeminiUrl(GOOGLE_API_KEY), {
+    const response = await fetchWithRetry(getGeminiUrl(GOOGLE_API_KEY), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -164,10 +186,16 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+
       if (response.status === 429) {
         return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
       }
-      const errorText = await response.text();
+      if (response.status === 503) {
+        res.setHeader('Retry-After', '2');
+        return res.status(503).json({ error: 'AI service is overloaded. Please try again in a moment.' });
+      }
+
       console.error('Google AI error:', response.status, errorText);
       return res.status(500).json({ error: 'Failed to generate suggestions' });
     }

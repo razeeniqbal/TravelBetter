@@ -154,6 +154,11 @@ export function DraggableTimelinePlace({
               <div className="flex items-center gap-2">
                 <h4 className="font-semibold text-foreground line-clamp-1">{place.name}</h4>
                 <SourceBadge />
+                {place.source === 'user' && !place.coordinates && (
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                    No coordinates found
+                  </span>
+                )}
                 {isAnchor && (
                   <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                     <Home className="h-3 w-3" />

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { AUTH_DISABLED } from '@/lib/flags';
+import { geocodePlaceCoordinates } from '@/lib/geocode';
 import {
   GUEST_AUTHOR,
   addGuestDay,
@@ -16,6 +17,23 @@ import {
   saveGuestTrip,
 } from '@/lib/guestTrips';
 import type { DayItinerary as TripDay, Place, Trip } from '@/types/trip';
+
+async function resolvePlaceInputs(
+  places: PlaceInput[],
+  destination?: string
+): Promise<PlaceInput[]> {
+  const resolvedPlaces: PlaceInput[] = [];
+  for (const place of places) {
+    if (place.coordinates) {
+      resolvedPlaces.push(place);
+      continue;
+    }
+
+    const coordinates = await geocodePlaceCoordinates(place.name, destination);
+    resolvedPlaces.push(coordinates ? { ...place, coordinates } : place);
+  }
+  return resolvedPlaces;
+}
 
 export interface UserTrip {
   id: string;
@@ -108,12 +126,19 @@ export function useAddPlaceToItinerary() {
     mutationFn: async ({ 
       dayItineraryId, 
       placeId,
-      placeName 
+      placeName,
+      destination,
+      coordinates,
     }: { 
       dayItineraryId: string; 
       placeId: string;
       placeName: string;
+      destination?: string;
+      coordinates?: { lat: number; lng: number };
     }) => {
+      const resolvedCoordinates = coordinates
+        ?? await geocodePlaceCoordinates(placeName, destination);
+
       if (AUTH_DISABLED) {
         const parsed = parseGuestDayId(dayItineraryId);
         if (!parsed) {
@@ -125,6 +150,7 @@ export function useAddPlaceToItinerary() {
           name: placeName,
           category: 'culture',
           source: 'user',
+          coordinates: resolvedCoordinates || undefined,
         };
 
         const updated = addGuestPlaceToDay(parsed.tripId, parsed.dayNumber, place);
@@ -151,7 +177,7 @@ export function useAddPlaceToItinerary() {
       // Check if place exists in places table, if not create it
       const { data: existingPlace } = await supabase
         .from('places')
-        .select('id')
+        .select('id, latitude, longitude')
         .eq('id', placeId)
         .maybeSingle();
       
@@ -165,12 +191,28 @@ export function useAddPlaceToItinerary() {
           .insert({
             name: placeName,
             category: 'culture', // Default category
+            latitude: resolvedCoordinates?.lat ?? null,
+            longitude: resolvedCoordinates?.lng ?? null,
           })
           .select('id')
           .single();
         
         if (createError) throw createError;
         actualPlaceId = newPlace.id;
+      } else if (
+        resolvedCoordinates
+        && (existingPlace.latitude == null || existingPlace.longitude == null)
+      ) {
+        const { error: updateError } = await supabase
+          .from('places')
+          .update({
+            latitude: resolvedCoordinates.lat,
+            longitude: resolvedCoordinates.lng,
+          })
+          .eq('id', existingPlace.id);
+        if (updateError) {
+          console.error('Failed to update place coordinates:', updateError);
+        }
       }
       
       // Insert the place into the itinerary
@@ -383,6 +425,10 @@ export function useCreateTripWithPlaces() {
 
   return useMutation({
     mutationFn: async (input: CreateTripWithPlacesInput) => {
+      const placesWithCoords = input.places.some(place => !place.coordinates)
+        ? await resolvePlaceInputs(input.places, input.destination)
+        : input.places;
+
       if (AUTH_DISABLED) {
         const tripId = createGuestTripId();
         const createdAt = new Date().toISOString();
@@ -393,11 +439,11 @@ export function useCreateTripWithPlaces() {
           places: [],
         }));
 
-        const places: Place[] = input.places.map((place, index) => ({
+        const places: Place[] = placesWithCoords.map((place, index) => ({
           id: createGuestPlaceId(tripId, index),
           name: place.name,
           nameLocal: place.nameLocal,
-          category: place.category || 'culture',
+          category: (place.category || 'culture') as Place['category'],
           description: place.description,
           duration: place.duration,
           cost: place.cost,
@@ -473,8 +519,8 @@ export function useCreateTripWithPlaces() {
       if (daysError) throw daysError;
       
       // 3. Insert all places into places table
-      if (input.places.length > 0) {
-        const placeInserts = input.places.map(p => ({
+      if (placesWithCoords.length > 0) {
+        const placeInserts = placesWithCoords.map(p => ({
           name: p.name,
           name_local: p.nameLocal || null,
           category: p.category || 'attraction',
@@ -502,12 +548,12 @@ export function useCreateTripWithPlaces() {
           source: string;
           confidence: number | null;
         }[] = [];
-        
+
         places.forEach((place, index) => {
           const dayIndex = Math.floor(index / placesPerDay);
           const dayId = days[Math.min(dayIndex, days.length - 1)].id;
           const positionInDay = index % placesPerDay;
-          const originalPlace = input.places[index];
+          const originalPlace = placesWithCoords[index];
           
           itineraryPlaceInserts.push({
             day_itinerary_id: dayId,

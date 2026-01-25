@@ -150,7 +150,10 @@ export function PersonalizationChatInterface({
       }
     } catch (error) {
       console.error('Error getting suggestions:', error);
-      toast.error('Failed to get suggestions. Please try again.');
+      const message = error instanceof Error
+        ? error.message
+        : 'Failed to get suggestions. Please try again.';
+      toast.error(message);
       setChatStep('customize');
     }
   };

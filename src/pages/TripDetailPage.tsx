@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { DraggableTimeline } from '@/components/trip/DraggableTimeline';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { BottomSheet, BottomSheetContent, BottomSheetDescription, BottomSheetTitle } from '@/components/ui/bottom-sheet';
 import { TimelinePlace } from '@/components/trip/TimelinePlace';
-import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,6 +35,16 @@ export default function TripDetailPage() {
   const [isAddingDay, setIsAddingDay] = useState(false);
   const snapPoints = useMemo(() => [0.2, 0.55, 0.9], []);
   const [activeSnapPoint, setActiveSnapPoint] = useState<number | string | null>(snapPoints[0]);
+  const [showSwipeHint, setShowSwipeHint] = useState(true);
+
+  const handleSnapPointChange = useCallback((value: number | string | null) => {
+    setActiveSnapPoint((prev) => {
+      if (prev !== value) {
+        setShowSwipeHint(false);
+      }
+      return value;
+    });
+  }, []);
   
   // Fetch trip from database
   const { data: trip, isLoading } = useTripDetail(tripId);
@@ -72,6 +82,12 @@ export default function TripDetailPage() {
   useEffect(() => {
     console.log('BottomSheet mounted');
   }, []);
+
+  // useEffect(() => {
+  //   if (!showSwipeHint) return;
+  //   const timeout = setTimeout(() => setShowSwipeHint(false), 2500);
+  //   return () => clearTimeout(timeout);
+  // }, [showSwipeHint]);
   
   if (isLoading) {
     return (
@@ -100,6 +116,7 @@ export default function TripDetailPage() {
   const isExpanded = activeSnapPoint === snapPoints[2];
   const previewPlaces = currentDayItinerary?.places.slice(0, 3) ?? [];
   const previewRemaining = (currentDayItinerary?.places.length || 0) - previewPlaces.length;
+  const mapPlaces = currentDayItinerary?.places ?? [];
   const fallbackTransform = typeof activeSnapPoint === 'number'
     ? `translate3d(0, ${(1 - activeSnapPoint) * 100}vh, 0)`
     : undefined;
@@ -134,7 +151,7 @@ export default function TripDetailPage() {
       if (!isEditMode) {
         toggleEditMode();
       }
-      setActiveSnapPoint(snapPoints[2]);
+      handleSnapPointChange(snapPoints[2]);
       return;
     }
     handleAddToItinerary();
@@ -217,8 +234,8 @@ export default function TripDetailPage() {
       >
         <MapPlaceholder
           destination={trip.destination}
-          placesCount={currentDayItinerary?.places.length || 0}
-          places={currentDayItinerary?.places || []}
+          placesCount={mapPlaces.length}
+          places={mapPlaces}
           className="h-full w-full rounded-none"
           showOverlays={false}
           controlsPosition="bottom-right"
@@ -268,15 +285,15 @@ export default function TripDetailPage() {
         </div>
       </header>
 
-      <BottomSheet
-        defaultOpen
-        modal={false}
-        dismissible={false}
-        snapPoints={snapPoints}
-        activeSnapPoint={activeSnapPoint}
-        setActiveSnapPoint={setActiveSnapPoint}
-        shouldScaleBackground={false}
-      >
+        <BottomSheet
+          defaultOpen
+          modal={false}
+          dismissible={false}
+          snapPoints={snapPoints}
+          activeSnapPoint={activeSnapPoint}
+          setActiveSnapPoint={handleSnapPointChange}
+          shouldScaleBackground={false}
+        >
         <BottomSheetContent
           showOverlay
           aria-label="Trip itinerary sheet"
@@ -287,7 +304,16 @@ export default function TripDetailPage() {
           <BottomSheetDescription className="sr-only">
             View and manage the daily itinerary for this trip.
           </BottomSheetDescription>
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {showSwipeHint && isCollapsed && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute left-1/2 -top-20 z-10 flex -translate-x-1/2 flex-col items-center gap-1 rounded-full bg-background/90 px-3 py-1.5 text-[11px] font-medium text-muted-foreground shadow-lg shadow-black/10 ring-1 ring-border/60 backdrop-blur animate-fade-in"
+              >
+                <ChevronUp className="h-4 w-4 animate-bounce text-muted-foreground/70" />
+                <span>Swipe up to view itinerary</span>
+              </div>
+            )}
             <div className="px-4 pb-4 pt-2">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-500">
                 DEBUG: sheet mounted
@@ -351,6 +377,21 @@ export default function TripDetailPage() {
                   onClick={handleShare}
                 >
                   <Share2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  className="w-full gap-2 rounded-full border-dashed text-muted-foreground"
+                  title="Route optimization coming soon"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Optimize route
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Soon
+                  </span>
                 </Button>
               </div>
             </div>

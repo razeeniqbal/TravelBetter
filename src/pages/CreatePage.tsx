@@ -183,6 +183,7 @@ export default function CreatePage() {
   const [urlInput, setUrlInput] = useState('');
   const [extractedPlaces, setExtractedPlaces] = useState<ExtractedPlace[]>([]);
   const [extractedDestination, setExtractedDestination] = useState('');
+  const [showGeocodeMessage, setShowGeocodeMessage] = useState(false);
 
   const handleScreenshotUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -318,6 +319,8 @@ export default function CreatePage() {
     }));
 
     const allPlaces = [...importedPlaceInputs, ...aiPlaceInputs];
+    const shouldShowGeocodeMessage = importedPlaceInputs.some(place => !place.coordinates);
+    setShowGeocodeMessage(shouldShowGeocodeMessage);
 
     // Create title from description or destination
     const trimmedDescription = tripDescription.trim();
@@ -341,16 +344,19 @@ export default function CreatePage() {
         },
         {
           onSuccess: (data) => {
+            setShowGeocodeMessage(false);
             navigate(`/trip/${data.trip.id}`);
           },
           onError: () => {
             setStep('personalization');
+            setShowGeocodeMessage(false);
             toast.error('Failed to create trip. Please try again.');
           },
         }
       );
     } catch {
       setStep('personalization');
+      setShowGeocodeMessage(false);
       toast.error('Failed to create trip. Please try again.');
     }
   };
@@ -553,7 +559,9 @@ export default function CreatePage() {
           </div>
           <p className="mt-6 text-lg font-medium">Creating your perfect itinerary...</p>
           <p className="mt-2 text-sm text-muted-foreground animate-pulse">
-            Analyzing preferences, optimizing routes...
+            {showGeocodeMessage
+              ? 'We are trying to locate the coords of the place you pasted in'
+              : 'Analyzing preferences, optimizing routes...'}
           </p>
         </div>
       )}

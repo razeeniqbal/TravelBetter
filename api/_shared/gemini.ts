@@ -50,6 +50,16 @@ function escapeControlCharsInStrings(input: string) {
   return output;
 }
 
+function sanitizeJsonText(input: string) {
+  let output = input;
+
+  output = output.replace(/"\s*\.(?=\s*,)/g, '"');
+  output = output.replace(/"(\s*)\.(?=\s*")/g, '"$1,');
+  output = output.replace(/,(?=\s*[}\]])/g, '');
+
+  return output;
+}
+
 export function parseGeminiJson<T>(rawText: string): T {
   try {
     return JSON.parse(rawText) as T;
@@ -67,7 +77,12 @@ export function parseGeminiJson<T>(rawText: string): T {
       return JSON.parse(slice) as T;
     } catch {
       const sanitized = escapeControlCharsInStrings(slice);
-      return JSON.parse(sanitized) as T;
+      try {
+        return JSON.parse(sanitized) as T;
+      } catch {
+        const normalized = sanitizeJsonText(sanitized);
+        return JSON.parse(normalized) as T;
+      }
     }
   }
 }

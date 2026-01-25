@@ -54,6 +54,11 @@ export function TimelinePlace({ place, index, time, isLast, onClick }: TimelineP
                 {place.category.charAt(0).toUpperCase() + place.category.slice(1)}
                 {time && <span className="ml-2">• {time}</span>}
               </p>
+              {place.source === 'user' && !place.coordinates && (
+                <p className="mt-1 text-[11px] font-medium text-amber-700">
+                  No coordinates found
+                </p>
+              )}
             </div>
             <button className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted">
               <Info className="h-4 w-4" />

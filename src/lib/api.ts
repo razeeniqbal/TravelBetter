@@ -156,6 +156,11 @@ export interface GenerateAISuggestionsResponse {
   success: boolean;
 }
 
+export interface GeocodePlaceResponse {
+  coordinates: { lat: number; lng: number } | null;
+  success: boolean;
+}
+
 export const api = {
   extractPlacesFromUrl: (url: string, destination?: string) =>
     fetchApi<ExtractPlacesFromUrlResponse>('extract-places-from-url', { url, destination }),
@@ -165,6 +170,9 @@ export const api = {
 
   extractPlacesFromText: (text: string, destination?: string) =>
     fetchApi<ExtractPlacesFromTextResponse>('extract-places-from-text', { text, destination }),
+
+  geocodePlace: (query: string, destination?: string) =>
+    fetchApi<GeocodePlaceResponse>('geocode-place', { query, destination }),
 
   // Uses caching to reduce duplicate API calls for the same destination/prompt
   generateAISuggestions: (params: {

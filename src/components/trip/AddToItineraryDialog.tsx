@@ -127,6 +127,8 @@ export function AddToItineraryDialog({
         dayItineraryId: dayId,
         placeId: place.id,
         placeName: place.name,
+        destination,
+        coordinates: place.coordinates,
       });
     }
     

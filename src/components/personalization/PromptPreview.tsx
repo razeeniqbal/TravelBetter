@@ -1,10 +1,13 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Sparkles, Edit2, MapPin } from 'lucide-react';
+import type { ParsedDayGroup } from '@/types/itinerary';
 
 interface PromptPreviewProps {
   prompt: string;
+  previewText?: string;
   importedPlaces: string[];
+  dayGroups?: ParsedDayGroup[];
   onEdit: () => void;
   onSubmit: () => void;
   isLoading?: boolean;
@@ -12,11 +15,16 @@ interface PromptPreviewProps {
 
 export function PromptPreview({
   prompt,
+  previewText,
   importedPlaces,
+  dayGroups,
   onEdit,
   onSubmit,
   isLoading = false,
 }: PromptPreviewProps) {
+  const displayText = previewText?.trim() || prompt;
+  const hasDayGroups = Boolean(dayGroups && dayGroups.length > 0);
+
   return (
     <div className="space-y-4">
       <div className="text-center">
@@ -34,7 +42,7 @@ export function PromptPreview({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-              {prompt}
+              {displayText}
             </p>
           </div>
         </div>
@@ -63,6 +71,29 @@ export function PromptPreview({
                 +{importedPlaces.length - 5} more
               </span>
             )}
+          </div>
+        </Card>
+      )}
+
+      {hasDayGroups && (
+        <Card className="p-3 bg-card border-border">
+          <div className="text-sm font-medium text-foreground">Day breakdown</div>
+          <div className="mt-3 space-y-3">
+            {dayGroups?.map((day, index) => (
+              <div key={`${day.label}-${index}`} className="space-y-2">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {day.label}
+                </div>
+                <ul className="space-y-1 text-sm text-foreground">
+                  {day.places.map((place, placeIndex) => (
+                    <li key={`${place.name}-${placeIndex}`} className="flex items-start gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                      <span>{place.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </Card>
       )}

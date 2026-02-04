@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+import { afterEach, beforeEach, vi } from "vitest";
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
@@ -12,4 +13,16 @@ Object.defineProperty(window, "matchMedia", {
     removeEventListener: () => {},
     dispatchEvent: () => {},
   }),
+});
+
+beforeEach(() => {
+  if (!globalThis.fetch || !vi.isMockFunction(globalThis.fetch)) {
+    globalThis.fetch = vi.fn();
+  }
+});
+
+afterEach(() => {
+  if (globalThis.fetch && vi.isMockFunction(globalThis.fetch)) {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockReset();
+  }
 });

@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 dist
+build
+coverage
 dist-ssr
 *.local
 
@@ -23,11 +25,13 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.tmp
 
 # Vercel
 .vercel
@@ -40,3 +44,5 @@ listmodel.md
 .opencode/
 openspec/
 AGENTS.md
+specs/
+.specify/

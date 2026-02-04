@@ -1,8 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { ArrowLeft, Sparkles, BookOpen, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Sparkles, BookOpen } from 'lucide-react';
 import { usePromptBuilder } from '@/hooks/usePromptBuilder';
 import { QuickSelectPills } from './QuickSelectPills';
 import { PromptTextArea } from './PromptTextArea';
@@ -11,6 +9,7 @@ import { ExamplePrompts } from './ExamplePrompts';
 import { AISuggestionsList, AISuggestion } from './AISuggestionsList';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import type { ParsedDayGroup } from '@/types/itinerary';
 
 type ChatStep = 'customize' | 'preview' | 'loading' | 'suggestions';
 
@@ -19,6 +18,9 @@ interface PersonalizationChatInterfaceProps {
   seedPlaces: string[];
   duration: number;
   rawItineraryText: string;
+  parsedRequest?: string;
+  parsedPreview?: string;
+  parsedDayGroups?: ParsedDayGroup[];
   onBack: () => void;
   onComplete: (selectedPlaces: AISuggestion[], days: number, resolvedDestination: string | undefined, userPlaces: string[]) => void;
   onSkip: (days: number, userPlaces: string[]) => void;
@@ -29,6 +31,9 @@ export function PersonalizationChatInterface({
   seedPlaces,
   duration,
   rawItineraryText,
+  parsedRequest,
+  parsedPreview,
+  parsedDayGroups,
   onBack,
   onComplete,
   onSkip,
@@ -41,6 +46,7 @@ export function PersonalizationChatInterface({
   const [processingTime, setProcessingTime] = useState<number>();
   const [tripDays, setTripDays] = useState(duration || 3);
   const [finalizedPlaces, setFinalizedPlaces] = useState<string[]>([]);
+  const [autoFilledPrompt, setAutoFilledPrompt] = useState(false);
 
   const {
     state,
@@ -54,7 +60,29 @@ export function PersonalizationChatInterface({
     setCustomPrompt,
     resetToGenerated,
     applyTemplate,
+    setDestination,
+    setSeedPlaces,
+    setItineraryText,
   } = usePromptBuilder(destination, seedPlaces, rawItineraryText);
+
+  useEffect(() => {
+    setDestination(destination);
+  }, [destination, setDestination]);
+
+  useEffect(() => {
+    setSeedPlaces(seedPlaces);
+  }, [seedPlaces, setSeedPlaces]);
+
+  useEffect(() => {
+    setItineraryText(rawItineraryText);
+  }, [rawItineraryText, setItineraryText]);
+
+  useEffect(() => {
+    const trimmed = parsedRequest?.trim();
+    if (!trimmed) return;
+    setCustomPrompt(trimmed);
+    setAutoFilledPrompt(true);
+  }, [parsedRequest, setCustomPrompt]);
 
   const parsePlacesFromPrompt = (prompt: string, fallback: string[]): string[] => {
     const lines = prompt.split(/\r?\n/).map(line => line.trim());
@@ -114,6 +142,8 @@ export function PersonalizationChatInterface({
       const { data, error } = await api.generateAISuggestions({
         destination,
         userPrompt: displayPrompt,
+        cleanedRequest: parsedRequest || displayPrompt,
+        dayGroups: parsedDayGroups,
         quickSelections: state.quickSelections as unknown as Record<string, unknown>,
         importedPlaces: parsedPlaces,
         duration: tripDays,
@@ -190,6 +220,13 @@ export function PersonalizationChatInterface({
     onSkip(tripDays, parsedPlaces);
   };
 
+  const handlePromptChange = (value: string) => {
+    if (autoFilledPrompt) {
+      setAutoFilledPrompt(false);
+    }
+    setCustomPrompt(value);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -227,57 +264,24 @@ export function PersonalizationChatInterface({
         {/* Customize Step */}
         {chatStep === 'customize' && (
           <>
-            {/* Days Input */}
-            <Card className="p-4 border-primary/20 bg-primary/5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium text-foreground">How many days?</h3>
-                  <p className="text-xs text-muted-foreground">Set your trip duration</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className="h-8 w-8 rounded-full"
-                    onClick={() => setTripDays(Math.max(1, tripDays - 1))}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <Input 
-                    type="number" 
-                    value={tripDays} 
-                    onChange={(e) => setTripDays(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
-                    className="w-16 text-center h-8"
-                    min={1}
-                    max={30}
-                  />
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className="h-8 w-8 rounded-full"
-                    onClick={() => setTripDays(Math.min(30, tripDays + 1))}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
             <QuickSelectPills
               selectedPurposes={state.quickSelections.purposes}
               selectedTravelers={state.quickSelections.travelers}
               selectedBudget={state.quickSelections.budget}
               selectedPace={state.quickSelections.pace}
+              tripDays={tripDays}
               onTogglePurpose={togglePurpose}
               onSetTravelers={setTravelers}
               onSetBudget={setBudget}
               onSetPace={setPace}
+              onChangeDays={setTripDays}
             />
 
             <PromptTextArea
               value={displayPrompt}
-              onChange={setCustomPrompt}
+              onChange={handlePromptChange}
               isEdited={state.isEdited}
+              autoFilled={autoFilledPrompt}
               onReset={resetToGenerated}
               charCount={charCount}
             />
@@ -306,7 +310,9 @@ export function PersonalizationChatInterface({
         {chatStep === 'preview' && (
           <PromptPreview
             prompt={displayPrompt}
+            previewText={parsedPreview}
             importedPlaces={[]}
+            dayGroups={parsedDayGroups}
             onEdit={() => setChatStep('customize')}
             onSubmit={handleGetSuggestions}
           />

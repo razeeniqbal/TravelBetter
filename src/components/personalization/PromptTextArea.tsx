@@ -6,6 +6,7 @@ interface PromptTextAreaProps {
   value: string;
   onChange: (value: string) => void;
   isEdited: boolean;
+  autoFilled?: boolean;
   onReset: () => void;
   charCount: number;
   minChars?: number;
@@ -16,6 +17,7 @@ export function PromptTextArea({
   value,
   onChange,
   isEdited,
+  autoFilled = false,
   onReset,
   charCount,
   minChars = 20,
@@ -30,9 +32,9 @@ export function PromptTextArea({
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-foreground flex items-center gap-2">
           Your Request
-          {isEdited && (
+          {(autoFilled || isEdited) && (
             <span className="text-xs bg-accent/20 text-accent-foreground px-2 py-0.5 rounded-full">
-              Customized
+              {autoFilled ? 'Auto-filled' : 'Customized'}
             </span>
           )}
         </label>
@@ -83,7 +85,7 @@ export function PromptTextArea({
       <div className="flex items-start gap-2 rounded-lg bg-accent/10 px-3 py-2">
         <Lightbulb className="h-4 w-4 text-accent-foreground mt-0.5 shrink-0" />
         <p className="text-xs text-accent-foreground">
-          This is the exact prompt sent to the AI. Add notes or adjust it to refine suggestions.
+          This is the exact prompt sent to the AI. Review it in Preview, then adjust if needed.
         </p>
       </div>
 

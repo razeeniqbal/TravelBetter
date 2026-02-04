@@ -56,6 +56,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const {
       destination,
       userPrompt,
+      cleanedRequest,
+      dayGroups,
       quickSelections = {},
       importedPlaces = [],
       existingPlaces = [],
@@ -100,8 +102,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Build the prompt
     const contextParts: string[] = [];
-    if (userPrompt) {
-      contextParts.push(`User's request: "${userPrompt}"`);
+    const effectivePrompt = cleanedRequest || userPrompt;
+
+    if (effectivePrompt) {
+      contextParts.push(`User's request: "${effectivePrompt}"`);
+    }
+    if (Array.isArray(dayGroups) && dayGroups.length > 0) {
+      const daySummaries = dayGroups
+        .map((day: { label: string; places: { name: string }[] }) => {
+          const names = day.places?.map(place => place.name).filter(Boolean).join(', ');
+          return names ? `${day.label}: ${names}` : day.label;
+        })
+        .join(' | ');
+      if (daySummaries) {
+        contextParts.push(`Places by day: ${daySummaries}`);
+      }
     }
     if (preferenceContext.length > 0) {
       contextParts.push(`Preferences: ${preferenceContext.join('. ')}`);

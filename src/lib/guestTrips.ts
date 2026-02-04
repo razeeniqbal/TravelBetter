@@ -1,4 +1,5 @@
 import type { DayItinerary, Place, Trip, TripAuthor } from '@/types/trip';
+import { sanitizeTrip } from '@/lib/itinerarySanitizer';
 
 const GUEST_TRIPS_KEY = 'guest_trips_v1';
 const GUEST_SAVED_TRIPS_KEY = 'guest_saved_trips_v1';
@@ -51,13 +52,30 @@ export function parseGuestDayId(dayId: string) {
   return { tripId: parts[1], dayNumber };
 }
 
+function sanitizeGuestTrips(trips: Trip[]) {
+  let changed = false;
+  const sanitized = trips.map(trip => {
+    const { trip: cleaned, changed: tripChanged } = sanitizeTrip(trip);
+    if (tripChanged) changed = true;
+    return cleaned;
+  });
+
+  if (changed) {
+    writeJson(GUEST_TRIPS_KEY, sanitized);
+  }
+
+  return sanitized;
+}
+
 export function getGuestTrips(): Trip[] {
-  return readJson<Trip[]>(GUEST_TRIPS_KEY, []);
+  const trips = readJson<Trip[]>(GUEST_TRIPS_KEY, []);
+  return sanitizeGuestTrips(trips);
 }
 
 export function saveGuestTrip(trip: Trip) {
-  const trips = getGuestTrips().filter(t => t.id !== trip.id);
-  writeJson(GUEST_TRIPS_KEY, [trip, ...trips]);
+  const cleaned = sanitizeTrip(trip).trip;
+  const trips = getGuestTrips().filter(t => t.id !== cleaned.id);
+  writeJson(GUEST_TRIPS_KEY, [cleaned, ...trips]);
 }
 
 export function updateGuestTrip(trip: Trip) {

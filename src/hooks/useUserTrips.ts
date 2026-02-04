@@ -35,6 +35,29 @@ async function resolvePlaceInputs(
   return resolvedPlaces;
 }
 
+function bucketPlaceIndices(places: PlaceInput[], dayCount: number) {
+  const buckets: number[][] = Array.from({ length: dayCount }, () => []);
+  const overflow: number[] = [];
+
+  places.forEach((place, index) => {
+    if (place.dayIndex && place.dayIndex >= 1 && place.dayIndex <= dayCount) {
+      buckets[place.dayIndex - 1].push(index);
+      return;
+    }
+    overflow.push(index);
+  });
+
+  if (overflow.length > 0) {
+    const perDay = Math.ceil(overflow.length / dayCount);
+    overflow.forEach((placeIndex, index) => {
+      const dayIndex = Math.min(Math.floor(index / perDay), dayCount - 1);
+      buckets[dayIndex].push(placeIndex);
+    });
+  }
+
+  return buckets;
+}
+
 export interface UserTrip {
   id: string;
   title: string;
@@ -404,6 +427,8 @@ export interface PlaceInput {
   tips?: string[];
   confidence?: number;
   source: 'user' | 'ai';
+  dayIndex?: number;
+  dayLabel?: string;
   coordinates?: {
     lat: number;
     lng: number;
@@ -439,24 +464,25 @@ export function useCreateTripWithPlaces() {
           places: [],
         }));
 
-        const places: Place[] = placesWithCoords.map((place, index) => ({
-          id: createGuestPlaceId(tripId, index),
-          name: place.name,
-          nameLocal: place.nameLocal,
-          category: (place.category || 'culture') as Place['category'],
-          description: place.description,
-          duration: place.duration,
-          cost: place.cost,
-          tips: place.tips,
-          confidence: place.confidence,
-          source: place.source,
-          coordinates: place.coordinates,
-        }));
-
-        const placesPerDay = Math.ceil(places.length / dayCount);
-        places.forEach((place, index) => {
-          const dayIndex = Math.min(Math.floor(index / placesPerDay), itinerary.length - 1);
-          itinerary[dayIndex].places.push(place);
+        const buckets = bucketPlaceIndices(placesWithCoords, dayCount);
+        buckets.forEach((bucket, dayIndex) => {
+          bucket.forEach((placeIndex, index) => {
+            const place = placesWithCoords[placeIndex];
+            if (!place) return;
+            itinerary[dayIndex].places.push({
+              id: createGuestPlaceId(tripId, index + dayIndex * 1000),
+              name: place.name,
+              nameLocal: place.nameLocal,
+              category: (place.category || 'culture') as Place['category'],
+              description: place.description,
+              duration: place.duration,
+              cost: place.cost,
+              tips: place.tips,
+              confidence: place.confidence,
+              source: place.source,
+              coordinates: place.coordinates,
+            });
+          });
         });
 
         const trip: Trip = {
@@ -540,7 +566,7 @@ export function useCreateTripWithPlaces() {
         if (placesError) throw placesError;
         
         // 4. Distribute places across days evenly
-        const placesPerDay = Math.ceil(places.length / input.duration);
+        const buckets = bucketPlaceIndices(placesWithCoords, input.duration);
         const itineraryPlaceInserts: {
           day_itinerary_id: string;
           place_id: string;
@@ -549,18 +575,19 @@ export function useCreateTripWithPlaces() {
           confidence: number | null;
         }[] = [];
 
-        places.forEach((place, index) => {
-          const dayIndex = Math.floor(index / placesPerDay);
+        buckets.forEach((bucket, dayIndex) => {
           const dayId = days[Math.min(dayIndex, days.length - 1)].id;
-          const positionInDay = index % placesPerDay;
-          const originalPlace = placesWithCoords[index];
-          
-          itineraryPlaceInserts.push({
-            day_itinerary_id: dayId,
-            place_id: place.id,
-            position: positionInDay,
-            source: originalPlace.source || 'user',
-            confidence: originalPlace.confidence || null,
+          bucket.forEach((placeIndex, positionInDay) => {
+            const originalPlace = placesWithCoords[placeIndex];
+            const place = places[placeIndex];
+            if (!place) return;
+            itineraryPlaceInserts.push({
+              day_itinerary_id: dayId,
+              place_id: place.id,
+              position: positionInDay,
+              source: originalPlace.source || 'user',
+              confidence: originalPlace.confidence || null,
+            });
           });
         });
         

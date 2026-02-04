@@ -1,5 +1,12 @@
 // API helper for calling Vercel serverless functions
 
+import type {
+  ParsedDayGroup,
+  ParseItineraryResponse,
+  ResolvePlacesRequest,
+  ResolvePlacesResponse,
+} from '@/types/itinerary';
+
 const API_BASE = '/api';
 
 interface ApiResponse<T> {
@@ -22,8 +29,10 @@ function getCacheKey(endpoint: string, body: Record<string, unknown>): string {
     endpoint,
     destination: body.destination,
     userPrompt: body.userPrompt,
+    cleanedRequest: body.cleanedRequest,
     quickSelections: body.quickSelections,
     duration: body.duration,
+    dayGroups: body.dayGroups,
   };
   return JSON.stringify(keyData);
 }
@@ -131,6 +140,10 @@ export interface ExtractPlacesFromTextResponse {
   places: ExtractedPlace[];
   summary: string;
   destination?: string;
+  cleanedRequest?: string;
+  previewText?: string;
+  days?: ParsedDayGroup[];
+  warnings?: string[];
   success: boolean;
 }
 
@@ -161,6 +174,17 @@ export interface GeocodePlaceResponse {
   success: boolean;
 }
 
+export interface ParseItineraryTextResponse extends ParseItineraryResponse {
+  success: boolean;
+}
+
+export interface ItineraryRecommendationsResponse {
+  suggestions: AISuggestion[];
+  promptInterpretation?: string;
+  resolvedDestination?: string;
+  success: boolean;
+}
+
 export const api = {
   extractPlacesFromUrl: (url: string, destination?: string) =>
     fetchApi<ExtractPlacesFromUrlResponse>('extract-places-from-url', { url, destination }),
@@ -171,8 +195,26 @@ export const api = {
   extractPlacesFromText: (text: string, destination?: string) =>
     fetchApi<ExtractPlacesFromTextResponse>('extract-places-from-text', { text, destination }),
 
+  parseItineraryText: (rawText: string, destinationHint?: string) =>
+    fetchApi<ParseItineraryTextResponse>('parse-itinerary-text', { raw_text: rawText, destination_hint: destinationHint }),
+
+  itineraryRecommendations: (params: {
+    cleanedRequest: string;
+    destination?: string;
+    durationDays?: number;
+    days: ParsedDayGroup[];
+  }) => fetchApiWithCache<ItineraryRecommendationsResponse>('itinerary-recommendations', {
+    cleaned_request: params.cleanedRequest,
+    destination: params.destination,
+    duration_days: params.durationDays,
+    days: params.days,
+  }),
+
   geocodePlace: (query: string, destination?: string) =>
     fetchApi<GeocodePlaceResponse>('geocode-place', { query, destination }),
+
+  resolvePlaces: (request: ResolvePlacesRequest) =>
+    fetchApi<ResolvePlacesResponse>('resolve-places', request as unknown as Record<string, unknown>),
 
   // Uses caching to reduce duplicate API calls for the same destination/prompt
   generateAISuggestions: (params: {
@@ -184,5 +226,7 @@ export const api = {
     existingPlaces: { name: string }[];
     preferences: Record<string, unknown>;
     travelStyle: string[];
+    cleanedRequest?: string;
+    dayGroups?: ParsedDayGroup[];
   }) => fetchApiWithCache<GenerateAISuggestionsResponse>('generate-ai-suggestions', params),
 };

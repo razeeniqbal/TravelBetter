@@ -1,17 +1,21 @@
 import { cn } from '@/lib/utils';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Minus, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface QuickSelectPillsProps {
   selectedPurposes: string[];
   selectedTravelers: string;
   selectedBudget: string;
   selectedPace: string;
+  tripDays: number;
   onTogglePurpose: (purpose: string) => void;
   onSetTravelers: (travelers: string) => void;
   onSetBudget: (budget: string) => void;
   onSetPace: (pace: string) => void;
+  onChangeDays: (days: number) => void;
 }
 
 const purposes = [
@@ -49,39 +53,17 @@ export function QuickSelectPills({
   selectedTravelers,
   selectedBudget,
   selectedPace,
+  tripDays,
   onTogglePurpose,
   onSetTravelers,
   onSetBudget,
   onSetPace,
+  onChangeDays,
 }: QuickSelectPillsProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
     <div className="space-y-5">
-      {/* Purpose Section - Multi-select */}
-      <div>
-        <label className="mb-3 block text-sm font-medium text-foreground">
-          What do you love?
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {purposes.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => onTogglePurpose(p.id)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all duration-200',
-                selectedPurposes.includes(p.id)
-                  ? 'border-primary bg-primary/10 text-primary scale-105'
-                  : 'border-border bg-card text-muted-foreground hover:border-primary/50'
-              )}
-            >
-              <span>{p.icon}</span>
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Travelers Section - Single-select */}
       <div>
         <label className="mb-3 block text-sm font-medium text-foreground">
@@ -106,6 +88,30 @@ export function QuickSelectPills({
         </div>
       </div>
 
+      {/* Purpose Section - Multi-select */}
+      <div>
+        <label className="mb-3 block text-sm font-medium text-foreground">
+          What do you love?
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {purposes.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => onTogglePurpose(p.id)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                selectedPurposes.includes(p.id)
+                  ? 'border-primary bg-primary/10 text-primary scale-105'
+                  : 'border-border bg-card text-muted-foreground hover:border-primary/50'
+              )}
+            >
+              <span>{p.icon}</span>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Advanced Options - Collapsible */}
       <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
         <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg bg-muted/50 px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
@@ -116,6 +122,44 @@ export function QuickSelectPills({
           )} />
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-4 space-y-4">
+          {/* Trip Duration */}
+          <div className="rounded-lg border border-border bg-card p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Trip length
+                </label>
+                <p className="text-sm text-foreground">Set number of days</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => onChangeDays(Math.max(1, tripDays - 1))}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  type="number"
+                  value={tripDays}
+                  onChange={(e) => onChangeDays(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
+                  className="w-16 text-center h-8"
+                  min={1}
+                  max={30}
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => onChangeDays(Math.min(30, tripDays + 1))}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
           {/* Budget */}
           <div>
             <label className="mb-2 block text-xs font-medium text-muted-foreground uppercase tracking-wide">

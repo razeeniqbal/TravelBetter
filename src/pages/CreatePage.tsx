@@ -12,8 +12,11 @@ import {
 import { toast } from 'sonner';
 import { useCreateTripWithPlaces, type PlaceInput } from '@/hooks/useUserTrips';
 import { api } from '@/lib/api';
+import { resolvePlacesForTrip } from '@/lib/resolvePlaces';
 import { PersonalizationChatInterface } from '@/components/personalization/PersonalizationChatInterface';
 import type { AISuggestion } from '@/components/personalization/AISuggestionsList';
+import type { ParsedDayGroup } from '@/types/itinerary';
+import { filterPlaces } from '@/lib/itinerarySanitizer';
 
 type FlowStep = 'hero' | 'personalization' | 'generating';
 
@@ -100,6 +103,19 @@ function getFirstLineSummary(description: string): string {
   return cleaned;
 }
 
+function sanitizeDestinationLabel(value: string): string {
+  return value
+    .replace(/[\p{Extended_Pictographic}]/gu, '')
+    .replace(/\bi(?:'|’)m planning a trip to\b/i, '')
+    .replace(/\bi am planning a trip to\b/i, '')
+    .replace(/\bplaces from my itinerary\b/i, '')
+    .replace(/\btrip\b/gi, '')
+    .replace(/\b\d{1,2}\/\d{1,2}(?:\s*[-–]\s*\d{1,2}\/\d{1,2})?\b/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.,:;]+$/g, '')
+    .trim();
+}
+
 function isLikelyItinerary(description: string): boolean {
   const trimmed = description.trim();
   if (!trimmed) return false;
@@ -153,16 +169,24 @@ function extractFallbackPlaces(description: string): ExtractedPlace[] {
 
 function getDisplayDestination(description: string, extractedDestination?: string): string {
   const extracted = extractedDestination?.trim();
-  if (extracted) return extracted;
+  if (extracted) {
+    const sanitized = sanitizeDestinationLabel(extracted);
+    if (sanitized) return sanitized;
+  }
 
   const basic = extractBasicDestination(description);
-  if (basic && basic.length <= 60 && !basic.includes('\n')) {
-    return basic;
+  if (basic) {
+    const sanitized = sanitizeDestinationLabel(basic);
+    if (sanitized && sanitized.length <= 60 && !sanitized.includes('\n')) {
+      return sanitized;
+    }
   }
 
   const summaryLine = getFirstLineSummary(description);
   if (summaryLine) {
-    return summaryLine.length > 80 ? `${summaryLine.slice(0, 77)}...` : summaryLine;
+    const sanitized = sanitizeDestinationLabel(summaryLine);
+    if (!sanitized) return summaryLine.length > 80 ? `${summaryLine.slice(0, 77)}...` : summaryLine;
+    return sanitized.length > 80 ? `${sanitized.slice(0, 77)}...` : sanitized;
   }
 
   return basic || summaryLine;
@@ -184,6 +208,9 @@ export default function CreatePage() {
   const [extractedPlaces, setExtractedPlaces] = useState<ExtractedPlace[]>([]);
   const [extractedDestination, setExtractedDestination] = useState('');
   const [showGeocodeMessage, setShowGeocodeMessage] = useState(false);
+  const [parsedRequest, setParsedRequest] = useState('');
+  const [parsedPreview, setParsedPreview] = useState('');
+  const [parsedDayGroups, setParsedDayGroups] = useState<ParsedDayGroup[]>([]);
 
   const handleScreenshotUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -272,12 +299,12 @@ export default function CreatePage() {
     handleGenerateTrip([], days, undefined, userPlaces);
   };
 
-  const handleGenerateTrip = async (
-    aiPlaces: AISuggestion[],
-    days?: number,
-    resolvedDestination?: string,
-    userPlaces?: string[]
-  ) => {
+    const handleGenerateTrip = async (
+      aiPlaces: AISuggestion[],
+      days?: number,
+      resolvedDestination?: string,
+      userPlaces?: string[]
+    ) => {
     setStep('generating');
 
     // Use resolved destination from AI or extract from description
@@ -286,10 +313,25 @@ export default function CreatePage() {
     const finalDuration = days || parseDuration(tripDescription);
 
     // Combine imported and AI-selected places into PlaceInput objects
-    const finalUserPlaces = userPlaces ?? extractedPlaces.map(p => p.name);
+    const parsedLabels = parsedDayGroups.map(day => day.label);
+    const sanitizedUserPlaces = filterPlaces(
+      (userPlaces ?? extractedPlaces.map(p => p.name)).map(name => ({ name })),
+      parsedLabels
+    ).map(item => item.name);
+    const finalUserPlaces = sanitizedUserPlaces;
     const extractedByName = new Map(
       extractedPlaces.map(place => [place.name.toLowerCase(), place])
     );
+    const dayIndexByPlace = new Map<string, number>();
+    const dayLabelByPlace = new Map<string, string>();
+    parsedDayGroups.forEach((day, index) => {
+      day.places.forEach(place => {
+        const key = place.name.toLowerCase();
+        dayIndexByPlace.set(key, index + 1);
+        dayLabelByPlace.set(key, day.label);
+      });
+    });
+
     const importedPlaceInputs: PlaceInput[] = finalUserPlaces.map(name => {
       const match = extractedByName.get(name.toLowerCase());
       return {
@@ -299,6 +341,8 @@ export default function CreatePage() {
         description: match?.description,
         tips: match?.tips,
         source: 'user' as const,
+        dayIndex: dayIndexByPlace.get(name.toLowerCase()),
+        dayLabel: dayLabelByPlace.get(name.toLowerCase()),
         coordinates:
           typeof match?.latitude === 'number' && typeof match?.longitude === 'number'
             ? { lat: match.latitude, lng: match.longitude }
@@ -319,7 +363,8 @@ export default function CreatePage() {
     }));
 
     const allPlaces = [...importedPlaceInputs, ...aiPlaceInputs];
-    const shouldShowGeocodeMessage = importedPlaceInputs.some(place => !place.coordinates);
+    const resolvedPlaces = await resolvePlacesForTrip(allPlaces, destination);
+    const shouldShowGeocodeMessage = resolvedPlaces.some(place => !place.coordinates);
     setShowGeocodeMessage(shouldShowGeocodeMessage);
 
     // Create title from description or destination
@@ -340,7 +385,7 @@ export default function CreatePage() {
           destination: destination,
           country: 'Unknown', // Will be resolved later or by user
           duration: finalDuration,
-          places: allPlaces,
+          places: resolvedPlaces,
         },
         {
           onSuccess: (data) => {
@@ -366,6 +411,9 @@ export default function CreatePage() {
     setImportType('text');
     setExtractedPlaces([]);
     setExtractedDestination('');
+    setParsedRequest('');
+    setParsedPreview('');
+    setParsedDayGroups([]);
 
     const destinationSeed = getDisplayDestination(tripDescription);
     const fallbackPlaces = extractFallbackPlaces(tripDescription);
@@ -377,11 +425,17 @@ export default function CreatePage() {
       );
 
       const resolvedDestination = data?.destination || destinationSeed;
+      const parsedDays = data?.days || [];
+      const cleanedRequest = data?.cleanedRequest || '';
+      const previewText = data?.previewText || cleanedRequest;
 
       if (error) {
         if (fallbackPlaces.length > 0) {
           setExtractedPlaces(fallbackPlaces);
           setExtractedDestination(resolvedDestination || destinationSeed);
+          setParsedRequest(cleanedRequest);
+          setParsedPreview(previewText);
+          setParsedDayGroups(parsedDays);
           setStep('personalization');
           toast.success(`Captured ${fallbackPlaces.length} places from your itinerary`);
           return;
@@ -390,17 +444,24 @@ export default function CreatePage() {
       }
 
       const extracted = data?.places || [];
-      if (extracted.length > 0) {
-        setExtractedPlaces(extracted);
+      const sanitizedExtracted = filterPlaces(extracted, parsedDays.map(day => day.label));
+      if (sanitizedExtracted.length > 0) {
+        setExtractedPlaces(sanitizedExtracted);
         setExtractedDestination(resolvedDestination || destinationSeed);
+        setParsedRequest(cleanedRequest);
+        setParsedPreview(previewText);
+        setParsedDayGroups(parsedDays);
         setStep('personalization');
-        toast.success(`Extracted ${extracted.length} places from your itinerary`);
+        toast.success(`Extracted ${sanitizedExtracted.length} places from your itinerary`);
         return;
       }
 
       if (fallbackPlaces.length > 0) {
         setExtractedPlaces(fallbackPlaces);
         setExtractedDestination(resolvedDestination || destinationSeed);
+        setParsedRequest(cleanedRequest);
+        setParsedPreview(previewText);
+        setParsedDayGroups(parsedDays);
         setStep('personalization');
         toast.success(`Captured ${fallbackPlaces.length} places from your itinerary`);
         return;
@@ -409,7 +470,12 @@ export default function CreatePage() {
       if (resolvedDestination) {
         setExtractedDestination(resolvedDestination);
       }
-      toast.info('We could not find specific places, but you can continue with your itinerary.');
+      if (!cleanedRequest) {
+        toast.info('We could not find specific places, but you can continue with your itinerary.');
+      }
+      setParsedRequest(cleanedRequest);
+      setParsedPreview(previewText);
+      setParsedDayGroups(parsedDays);
       setStep('personalization');
     } catch (error) {
       console.error('Error extracting from text:', error);
@@ -544,6 +610,9 @@ export default function CreatePage() {
           destination={displayDestination || 'Your trip'}
           seedPlaces={seedPlaceNames}
           rawItineraryText={tripDescription}
+          parsedRequest={parsedRequest}
+          parsedPreview={parsedPreview}
+          parsedDayGroups={parsedDayGroups}
           duration={tripDuration}
           onBack={() => setStep('hero')}
           onComplete={handlePersonalizationComplete}
@@ -558,7 +627,7 @@ export default function CreatePage() {
             <Sparkles className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-primary" />
           </div>
           <p className="mt-6 text-lg font-medium">Creating your perfect itinerary...</p>
-          <p className="mt-2 text-sm text-muted-foreground animate-pulse">
+          <p className="mt-2 text-center text-sm text-muted-foreground animate-pulse">
             {showGeocodeMessage
               ? 'We are trying to locate the coords of the place you pasted in'
               : 'Analyzing preferences, optimizing routes...'}

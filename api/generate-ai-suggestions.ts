@@ -150,7 +150,6 @@ Categories: food, culture, nature, shop, night, photo, accommodation, transport
 
 You MUST respond with a valid JSON object in this exact format:
 {
-  "promptInterpretation": "Brief summary of what you understood from the user request",
   "suggestions": [
     {
       "name": "Place name in English",
@@ -226,7 +225,7 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
     }
 
     // Parse the JSON response
-    let result: { suggestions?: SuggestedPlace[]; promptInterpretation?: string };
+    let result: { suggestions?: SuggestedPlace[] };
     try {
       result = parseGeminiJson(responseText);
     } catch (parseError) {
@@ -235,17 +234,12 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
     }
 
     const suggestions: SuggestedPlace[] = result.suggestions || [];
-    const promptInterpretation: string = result.promptInterpretation || '';
-
     // Sort by confidence
     suggestions.sort((a, b) => b.confidence - a.confidence);
 
     console.log(`Generated ${suggestions.length} suggestions`);
-    console.log('Prompt interpretation:', promptInterpretation);
-
     return res.status(200).json({
       suggestions,
-      promptInterpretation,
       success: true
     });
 

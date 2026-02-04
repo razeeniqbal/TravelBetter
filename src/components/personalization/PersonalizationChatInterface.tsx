@@ -41,7 +41,6 @@ export function PersonalizationChatInterface({
   const [chatStep, setChatStep] = useState<ChatStep>('customize');
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
-  const [promptInterpretation, setPromptInterpretation] = useState<string>();
   const [resolvedDestination, setResolvedDestination] = useState<string>();
   const [processingTime, setProcessingTime] = useState<number>();
   const [tripDays, setTripDays] = useState(duration || 3);
@@ -168,7 +167,6 @@ export function PersonalizationChatInterface({
           accepted: false,
           rejected: false,
         })));
-        setPromptInterpretation(data.promptInterpretation);
         // Store the AI-resolved destination for use when creating the trip
         if (data.resolvedDestination) {
           setResolvedDestination(data.resolvedDestination);
@@ -338,7 +336,6 @@ export function PersonalizationChatInterface({
         {chatStep === 'suggestions' && (
           <AISuggestionsList
             suggestions={suggestions}
-            promptInterpretation={promptInterpretation}
             processingTime={processingTime}
             requiredPlaces={finalizedPlaces}
             onAccept={handleAccept}

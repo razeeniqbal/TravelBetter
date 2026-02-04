@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,6 +7,10 @@ import { X, Star, ArrowRight, ChevronRight, Loader2 } from 'lucide-react';
 import { useTripDetail } from '@/hooks/useTripDetail';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+interface ReviewTripPageProps {
+  tripId: string;
+}
 
 const vibes = [
   { id: 'adventure', label: 'Adventure', icon: '🏔️' },
@@ -16,9 +20,8 @@ const vibes = [
   { id: 'romantic', label: 'Romantic', icon: '💕' },
 ];
 
-export default function ReviewTripPage() {
-  const { tripId } = useParams();
-  const navigate = useNavigate();
+export default function ReviewTripPage({ tripId }: ReviewTripPageProps) {
+  const router = useRouter();
   const [step, setStep] = useState<'overview' | 'day-review'>('overview');
   const [activeDay, setActiveDay] = useState(1);
   const [selectedVibes, setSelectedVibes] = useState<string[]>(['adventure']);

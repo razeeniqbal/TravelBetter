@@ -1,5 +1,9 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+'use client';
+
+import React from "react"
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { TrendingDestinations } from '@/components/home/TrendingDestinations';
 import { SearchBar } from '@/components/home/SearchBar';
@@ -26,7 +30,7 @@ const destinations = [
 ];
 
 export default function HomePage() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { user } = useAuth();
   const { data: savedTripIds = [] } = useSavedTrips();
   const toggleSaveTrip = useToggleSaveTrip();
@@ -44,22 +48,22 @@ export default function HomePage() {
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
+      router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
     } else {
-      navigate('/search');
+      router.push("/search");
     }
   };
 
   const handleHeartClick = (e: React.MouseEvent, tripId: string) => {
     e.stopPropagation();
-    
+
     if (!user) {
       toast({
-        title: 'Sign in required',
-        description: 'Please sign in to save trips.',
-        variant: 'destructive',
+        title: "Sign in required",
+        description: "Please sign in to save trips.",
+        variant: "destructive",
       });
-      navigate('/auth');
+      router.push("/auth");
       return;
     }
 
@@ -69,24 +73,25 @@ export default function HomePage() {
 
   // Fetch real public trips, fall back to sample data if none exist
   const { data: publicTrips, isLoading: isLoadingTrips } = useFeaturedTrips();
-  const displayTrips: Trip[] = publicTrips && publicTrips.length > 0 ? publicTrips : sampleTrips;
+  const displayTrips: Trip[] =
+    publicTrips && publicTrips.length > 0 ? publicTrips : sampleTrips;
 
   const handleRemixClick = async (e: React.MouseEvent, trip: Trip) => {
     e.stopPropagation();
-    
+
     if (!user) {
       toast({
-        title: 'Sign in required',
-        description: 'Please sign in to remix trips.',
-        variant: 'destructive',
+        title: "Sign in required",
+        description: "Please sign in to remix trips.",
+        variant: "destructive",
       });
-      navigate('/auth');
+      router.push("/auth");
       return;
     }
 
     try {
       const newTripId = await remixMutation.mutateAsync(trip);
-      navigate(`/trip/${newTripId}`);
+      router.push(`/trip/${newTripId}`);
     } catch (error) {
       console.error('Error remixing trip:', error);
     }
@@ -122,11 +127,11 @@ export default function HomePage() {
             <h2 className="font-semibold text-foreground">Countries & City</h2>
             <p className="text-xs text-muted-foreground">Select multiple destinations for your route</p>
           </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className="gap-1 text-primary"
-            onClick={() => navigate('/explore')}
+            onClick={() => router.push("/explore")}
           >
             See all <ArrowRight className="h-3 w-3" />
           </Button>
@@ -165,7 +170,7 @@ export default function HomePage() {
             variant="ghost" 
             size="sm" 
             className="gap-1 text-primary"
-            onClick={() => navigate('/trips')}
+            onClick={() => router.push("/trips")}
           >
             See all <ArrowRight className="h-3 w-3" />
           </Button>
@@ -186,14 +191,14 @@ export default function HomePage() {
                 key={trip.id} 
                 className="break-inside-avoid"
               >
-                <div 
-                  className="group relative cursor-pointer overflow-hidden rounded-xl bg-card shadow-travel transition-all hover:shadow-travel-hover"
-                  onClick={() => navigate(`/trip/${trip.id}`)}
-                >
+                  <div 
+                    className="group relative cursor-pointer overflow-hidden rounded-xl bg-card shadow-travel transition-all hover:shadow-travel-hover"
+                    onClick={() => router.push(`/trip/${trip.id}`)}
+                  >
                   {/* Image with variable height */}
                   <div className={`overflow-hidden ${index % 3 === 0 ? 'aspect-[3/4]' : 'aspect-square'}`}>
                     <img 
-                      src={trip.coverImage} 
+                      src={trip.coverImage || "/placeholder.svg"} 
                       alt={trip.title}
                       className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
@@ -236,7 +241,7 @@ export default function HomePage() {
                     <h3 className="font-medium text-foreground line-clamp-1">{trip.title}</h3>
                     <div className="mt-2 flex items-center gap-2">
                       <img 
-                        src={trip.author.avatar} 
+                        src={trip.author.avatar || "/placeholder.svg"} 
                         alt={trip.author.name}
                         className="h-5 w-5 rounded-full object-cover"
                       />
@@ -253,8 +258,8 @@ export default function HomePage() {
 
       {/* Floating Start Planning Button */}
       <div className="fixed bottom-24 right-4 z-40">
-        <Button 
-          onClick={() => navigate('/create')}
+        <Button
+          onClick={() => router.push("/create")}
           className="gap-2 rounded-full px-6 py-6 shadow-lg"
         >
           Start Planning!

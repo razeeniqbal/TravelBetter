@@ -1,1 +1,1 @@
-export const AUTH_DISABLED = import.meta.env.VITE_DISABLE_AUTH === 'true';
+export const AUTH_DISABLED = process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true';

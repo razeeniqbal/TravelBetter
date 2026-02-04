@@ -1,0 +1,309 @@
+"use client";
+
+import React from "react"
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { BottomNav } from "@/components/navigation/BottomNav";
+import { TrendingDestinations } from "@/components/home/TrendingDestinations";
+import { SearchBar } from "@/components/home/SearchBar";
+import { DestinationCard } from "@/components/home/DestinationCard";
+import { sampleTrips } from "@/data/sampleTrips";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Heart, GitFork, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useSavedTrips, useToggleSaveTrip } from "@/hooks/useSavedTrips";
+import { useRemixTrip } from "@/hooks/useRemixTrip";
+import { useFeaturedTrips } from "@/hooks/usePublicTrips";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import type { Trip } from "@/types/trip";
+
+const filters = ["All", "Europe", "Asia", "Roadtrips", "Beach", "Culture"];
+
+const destinations = [
+  {
+    id: "jp",
+    country: "Japan",
+    city: "Tokyo",
+    image:
+      "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&h=500&fit=crop",
+  },
+  {
+    id: "it",
+    country: "Italy",
+    city: "Venice",
+    image:
+      "https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=400&h=500&fit=crop",
+  },
+  {
+    id: "kr",
+    country: "South Korea",
+    city: "Seoul",
+    image:
+      "https://images.unsplash.com/photo-1534274867514-d5b47ef89ed7?w=400&h=500&fit=crop",
+  },
+  {
+    id: "id",
+    country: "Indonesia",
+    city: "Bali",
+    image:
+      "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&h=500&fit=crop",
+  },
+];
+
+export default function HomePage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { data: savedTripIds = [] } = useSavedTrips();
+  const toggleSaveTrip = useToggleSaveTrip();
+  const remixMutation = useRemixTrip();
+  const { toast } = useToast();
+
+  const [activeFilter, setActiveFilter] = useState("All");
+  const [selectedDestination, setSelectedDestination] = useState<string | null>(
+    null
+  );
+  const [selectedTrending, setSelectedTrending] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const toggleDestination = (id: string) => {
+    setSelectedDestination((prev) => (prev === id ? null : id));
+  };
+
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+    } else {
+      router.push("/search");
+    }
+  };
+
+  const handleHeartClick = (e: React.MouseEvent, tripId: string) => {
+    e.stopPropagation();
+
+    if (!user) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to save trips.",
+        variant: "destructive",
+      });
+      router.push("/auth");
+      return;
+    }
+
+    const isSaved = savedTripIds.includes(tripId);
+    toggleSaveTrip.mutate({ tripId, isSaved });
+  };
+
+  // Fetch real public trips, fall back to sample data if none exist
+  const { data: publicTrips, isLoading: isLoadingTrips } = useFeaturedTrips();
+  const displayTrips: Trip[] =
+    publicTrips && publicTrips.length > 0 ? publicTrips : sampleTrips;
+
+  const handleRemixClick = async (e: React.MouseEvent, trip: Trip) => {
+    e.stopPropagation();
+
+    if (!user) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to remix trips.",
+        variant: "destructive",
+      });
+      router.push("/auth");
+      return;
+    }
+
+    try {
+      const newTripId = await remixMutation.mutateAsync(trip);
+      router.push(`/trip/${newTripId}`);
+    } catch (error) {
+      console.error("Error remixing trip:", error);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background pb-24">
+      {/* Hero Section */}
+      <div className="px-4 pb-2 pt-6">
+        <h1 className="text-2xl font-bold text-foreground">Where to next?</h1>
+        <p className="text-muted-foreground">Plan your perfect trip</p>
+      </div>
+
+      {/* Search Bar */}
+      <div className="py-3" onClick={handleSearch}>
+        <SearchBar
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search places, cities, reviews..."
+        />
+      </div>
+
+      {/* Trending Destinations */}
+      <TrendingDestinations selected={selectedTrending} onSelect={setSelectedTrending} />
+
+      {/* Countries & City Section */}
+      <div className="px-4 py-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-foreground">Countries & City</h2>
+            <p className="text-xs text-muted-foreground">
+              Select multiple destinations for your route
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-primary"
+            onClick={() => router.push("/explore")}
+          >
+            See all <ArrowRight className="h-3 w-3" />
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {destinations.map((dest) => (
+            <DestinationCard
+              key={dest.id}
+              {...dest}
+              selected={selectedDestination === dest.id}
+              onSelect={toggleDestination}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Filter Pills */}
+      <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-3">
+        {filters.map((filter) => (
+          <Badge
+            key={filter}
+            variant={activeFilter === filter ? "default" : "outline"}
+            className="cursor-pointer whitespace-nowrap px-4 py-1.5 text-sm"
+            onClick={() => setActiveFilter(filter)}
+          >
+            {filter}
+          </Badge>
+        ))}
+      </div>
+
+      {/* Visualize Influencer Routes Section */}
+      <div className="px-4 py-4">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold text-foreground">
+            Visualize Influencer Routes
+          </h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-primary"
+            onClick={() => router.push("/trips")}
+          >
+            See all <ArrowRight className="h-3 w-3" />
+          </Button>
+        </div>
+
+        {/* Masonry-style Grid */}
+        {isLoadingTrips ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="columns-2 gap-3 space-y-3">
+            {displayTrips.map((trip, index) => {
+              const isSaved = savedTripIds.includes(trip.id);
+
+              return (
+                <div key={trip.id} className="break-inside-avoid">
+                  <div
+                    className="group relative cursor-pointer overflow-hidden rounded-xl bg-card shadow-travel transition-all hover:shadow-travel-hover"
+                    onClick={() => router.push(`/trip/${trip.id}`)}
+                  >
+                    {/* Image with variable height */}
+                    <div
+                      className={`overflow-hidden ${
+                        index % 3 === 0 ? "aspect-[3/4]" : "aspect-square"
+                      }`}
+                    >
+                      <img
+                        src={trip.coverImage || "/placeholder.svg"}
+                        alt={trip.title}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    </div>
+
+                    {/* Location Badge */}
+                    <div className="absolute left-2 top-2">
+                      <Badge className="bg-white/90 text-foreground backdrop-blur-sm">
+                        {trip.destination}
+                      </Badge>
+                    </div>
+
+                    {/* Action Icons */}
+                    <div className="absolute right-2 top-2 flex flex-col gap-2">
+                      {/* Heart Icon */}
+                      <button
+                        className="rounded-full bg-white/80 p-1.5 backdrop-blur-sm transition-colors hover:bg-white"
+                        onClick={(e) => handleHeartClick(e, trip.id)}
+                      >
+                        <Heart
+                          className={cn(
+                            "h-4 w-4 transition-colors",
+                            isSaved
+                              ? "fill-red-500 text-red-500"
+                              : "text-foreground"
+                          )}
+                        />
+                      </button>
+
+                      {/* Remix Icon */}
+                      <button
+                        className={cn(
+                          "rounded-full bg-white/80 p-1.5 backdrop-blur-sm transition-colors hover:bg-white",
+                          remixMutation.isPending && "opacity-50 pointer-events-none"
+                        )}
+                        onClick={(e) => handleRemixClick(e, trip)}
+                      >
+                        <GitFork className="h-4 w-4 text-foreground" />
+                      </button>
+                    </div>
+
+                    {/* Bottom Content */}
+                    <div className="p-3">
+                      <h3 className="font-medium text-foreground line-clamp-1">
+                        {trip.title}
+                      </h3>
+                      <div className="mt-2 flex items-center gap-2">
+                        <img
+                          src={trip.author.avatar || "/placeholder.svg"}
+                          alt={trip.author.name}
+                          className="h-5 w-5 rounded-full object-cover"
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          @{trip.author.username}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Floating Start Planning Button */}
+      <div className="fixed bottom-24 right-4 z-40">
+        <Button
+          onClick={() => router.push("/create")}
+          className="gap-2 rounded-full px-6 py-6 shadow-lg"
+        >
+          Start Planning!
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <BottomNav />
+    </div>
+  );
+}

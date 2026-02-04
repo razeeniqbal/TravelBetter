@@ -1,3 +1,5 @@
+'use client';
+
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -62,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (AUTH_DISABLED) {
       return { error: null };
     }
-    const redirectUrl = `${window.location.origin}/`;
+    const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
     
     const { error } = await supabase.auth.signUp({
       email,

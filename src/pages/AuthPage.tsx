@@ -1,5 +1,9 @@
+'use client';
+
+import React from "react"
+
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,15 +26,15 @@ export default function AuthPage() {
   const [errors, setErrors] = useState<{ email?: string; password?: string; username?: string }>({});
   
   const { signIn, signUp, user } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const { toast } = useToast();
 
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
-      navigate('/');
+      router.push('/');
     }
-  }, [user, navigate]);
+  }, [user, router]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string; username?: string } = {};
@@ -85,7 +89,7 @@ export default function AuthPage() {
             title: 'Welcome back!',
             description: 'You have successfully logged in.',
           });
-          navigate('/');
+          router.push('/');
         }
       } else {
         const { error } = await signUp(email, password, username);
@@ -108,7 +112,7 @@ export default function AuthPage() {
             title: 'Account created!',
             description: 'Welcome to TravelBetter! Start planning your adventures.',
           });
-          navigate('/');
+          router.push('/');
         }
       }
     } finally {
@@ -123,7 +127,7 @@ export default function AuthPage() {
         <Button 
           variant="ghost" 
           size="icon" 
-          onClick={() => navigate('/')}
+          onClick={() => router.push('/')}
           className="rounded-full"
         >
           <ArrowLeft className="h-5 w-5" />

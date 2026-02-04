@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -14,9 +14,12 @@ import { cn } from '@/lib/utils';
 import { usePlaceWithTripInfo, usePlaceReviews } from '@/hooks/usePlaces';
 import { Place } from '@/types/trip';
 
-export default function PlaceDetailPage() {
-  const { placeId } = useParams();
-  const navigate = useNavigate();
+interface PlaceDetailPageProps {
+  placeId: string;
+}
+
+export default function PlaceDetailPage({ placeId }: PlaceDetailPageProps) {
+  const router = useRouter();
   const { user } = useAuth();
   const { data: savedPlaceIds = [] } = useSavedPlaces();
   const toggleSavePlace = useToggleSavePlace();

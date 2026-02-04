@@ -164,7 +164,6 @@ export interface AISuggestion {
 
 export interface GenerateAISuggestionsResponse {
   suggestions: AISuggestion[];
-  promptInterpretation: string;
   resolvedDestination?: string; // The actual destination identified by AI
   success: boolean;
 }
@@ -180,7 +179,6 @@ export interface ParseItineraryTextResponse extends ParseItineraryResponse {
 
 export interface ItineraryRecommendationsResponse {
   suggestions: AISuggestion[];
-  promptInterpretation?: string;
   resolvedDestination?: string;
   success: boolean;
 }

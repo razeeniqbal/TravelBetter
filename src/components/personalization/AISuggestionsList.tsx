@@ -26,7 +26,6 @@ export interface AISuggestion {
 
 interface AISuggestionsListProps {
   suggestions: AISuggestion[];
-  promptInterpretation?: string;
   processingTime?: number;
   requiredPlaces?: string[];
   onAccept: (index: number) => void;
@@ -37,7 +36,6 @@ interface AISuggestionsListProps {
 
 export function AISuggestionsList({
   suggestions,
-  promptInterpretation,
   processingTime,
   requiredPlaces = [],
   onAccept,
@@ -75,16 +73,6 @@ export function AISuggestionsList({
           </p>
         )}
       </div>
-
-      {/* AI Interpretation */}
-      {promptInterpretation && (
-        <Card className="p-3 bg-accent/10 border-accent/30">
-          <p className="text-xs text-accent-foreground">
-            <span className="font-medium">AI understood: </span>
-            {promptInterpretation}
-          </p>
-        </Card>
-      )}
 
       {requiredCount > 0 && (
         <Card className="p-3 bg-secondary/30 border-secondary">

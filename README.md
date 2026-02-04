@@ -57,6 +57,10 @@ GOOGLE_API_KEY=your_google_api_key
 GEMINI_MODEL=gemini-2.0-flash
 GOOGLE_API_KEY_TEXT_EXTRACT=your_google_api_key
 GEMINI_TEXT_EXT_MODEL=gemini-2.0-flash
+
+# Google Places/Geocoding (restrict keys to required APIs)
+GOOGLE_PLACES_API_KEY=your_google_places_key
+GOOGLE_GEOCODING_API_KEY=your_google_geocoding_key
 ```
 
 ## Available Scripts
@@ -90,6 +94,8 @@ In Vercel Dashboard → Project Settings → Environment Variables, add:
 | `GEMINI_MODEL` | Optional Gemini model name (defaults to `gemini-2.0-flash`) |
 | `GOOGLE_API_KEY_TEXT_EXTRACT` | Optional key override for text extraction (fallbacks to `GOOGLE_API_KEY`) |
 | `GEMINI_TEXT_EXT_MODEL` | Optional model override for text extraction (fallbacks to `GEMINI_MODEL`) |
+| `GOOGLE_PLACES_API_KEY` | Optional Places API key (Autocomplete/Text Search) |
+| `GOOGLE_GEOCODING_API_KEY` | Optional Geocoding API key (fallbacks to `GOOGLE_API_KEY`) |
 
 ### 3. Deploy
 

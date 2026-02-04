@@ -94,6 +94,11 @@ export function AISuggestionsList({
               {requiredCount} place{requiredCount !== 1 ? 's' : ''} already included
             </span>
           </div>
+          {pendingCount > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {pendingCount} recommendation{pendingCount !== 1 ? 's' : ''} remaining
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap gap-1">
             {requiredPlaces.slice(0, 5).map((place, index) => (
               <span

@@ -1,5 +1,40 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getGeminiUrl, getGeminiUrlWithModel, parseGeminiJson } from './_shared/gemini.js';
+import { parseItineraryText } from './lib/itinerary-parser.js';
+
+const EMOJI_REGEX = /[\p{Extended_Pictographic}]/gu;
+const VARIATION_SELECTOR_REGEX = /[\uFE0E\uFE0F]/g;
+const LEADING_MARKERS_REGEX = /^[•\-*]+\s*/;
+const TRAILING_ASTERISK_REGEX = /\s*\*+$/;
+const DATE_RANGE_REGEX = /\b\d{1,2}\/\d{1,2}(?:\s*[-–]\s*\d{1,2}\/\d{1,2})\b/;
+const DAY_HEADER_REGEX = /^day\s*\d+\b/i;
+const DAY_HEADER_COMPACT_REGEX = /^day\d+\b/i;
+const META_LINE_PATTERNS = [
+  /^places from my itinerary\b/i,
+  /^i(?:'|’)m planning a trip to\b/i,
+  /^i am planning a trip to\b/i,
+];
+
+function normalizeLabel(value: string) {
+  return value
+    .replace(EMOJI_REGEX, '')
+    .replace(VARIATION_SELECTOR_REGEX, '')
+    .replace(LEADING_MARKERS_REGEX, '')
+    .replace(TRAILING_ASTERISK_REGEX, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function shouldExcludePlaceName(name: string, dayLabels?: Set<string>) {
+  const normalized = normalizeLabel(name);
+  if (!normalized) return true;
+  if (dayLabels?.has(normalized)) return true;
+  if (DAY_HEADER_REGEX.test(normalized) || DAY_HEADER_COMPACT_REGEX.test(normalized)) return true;
+  if (META_LINE_PATTERNS.some(pattern => pattern.test(normalized))) return true;
+  if (normalized.includes('trip') && DATE_RANGE_REGEX.test(normalized)) return true;
+  return false;
+}
 
 interface ExtractedPlace {
   name: string;
@@ -40,6 +75,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const textExtractionModel = process.env.GEMINI_TEXT_EXT_MODEL;
 
     console.log('Extracting places from text itinerary');
+
+    const parsed = parseItineraryText(text, destination || null);
+    const fallbackPlaces: ExtractedPlace[] = parsed.days
+      .flatMap(day => day.places)
+      .map(place => ({
+        name: place.name,
+        category: 'attraction',
+      }));
 
     const systemPrompt = `You are a travel assistant that extracts place names and destinations from messy itinerary text.
 
@@ -124,7 +167,19 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
     const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!responseText) {
       console.error('Unexpected response format:', JSON.stringify(data));
-      return res.status(200).json({ error: 'Failed to extract places from text', places: [] });
+      return res.status(200).json({
+        error: 'Failed to extract places from text',
+        places: fallbackPlaces,
+        summary: `Found ${fallbackPlaces.length} places`,
+        destination: parsed.destination || '',
+        cleanedRequest: parsed.cleanedRequest,
+        previewText: parsed.previewText,
+        cleaned_request: parsed.cleanedRequest,
+        preview_text: parsed.previewText,
+        days: parsed.days,
+        warnings: parsed.warnings,
+        success: true,
+      });
     }
 
     let result: { places?: ExtractedPlace[]; summary?: string; destination?: string };
@@ -132,17 +187,39 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
       result = parseGeminiJson(responseText);
     } catch (parseError) {
       console.error('Failed to parse AI response:', responseText);
-      return res.status(200).json({ error: 'Failed to parse AI response', places: [] });
+      return res.status(200).json({
+        error: 'Failed to parse AI response',
+        places: fallbackPlaces,
+        summary: `Found ${fallbackPlaces.length} places`,
+        destination: parsed.destination || '',
+        cleanedRequest: parsed.cleanedRequest,
+        previewText: parsed.previewText,
+        cleaned_request: parsed.cleanedRequest,
+        preview_text: parsed.previewText,
+        days: parsed.days,
+        warnings: parsed.warnings,
+        success: true,
+      });
     }
 
-    const places: ExtractedPlace[] = result.places || [];
+    const dayLabelSet = new Set(parsed.days.map(day => normalizeLabel(day.label)));
+    const rawPlaces: ExtractedPlace[] = result.places && result.places.length > 0
+      ? result.places
+      : fallbackPlaces;
+    const places = rawPlaces.filter(place => !shouldExcludePlaceName(place.name, dayLabelSet));
 
     console.log(`Extracted ${places.length} places from text`);
 
     return res.status(200).json({
       places,
       summary: result.summary || `Found ${places.length} places`,
-      destination: result.destination || '',
+      destination: result.destination || parsed.destination || '',
+      cleanedRequest: parsed.cleanedRequest,
+      previewText: parsed.previewText,
+      cleaned_request: parsed.cleanedRequest,
+      preview_text: parsed.previewText,
+      days: parsed.days,
+      warnings: parsed.warnings,
       success: true
     });
   } catch (error) {

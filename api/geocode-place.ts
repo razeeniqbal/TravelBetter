@@ -9,7 +9,11 @@ function normalizeText(value: string) {
   return value.toLowerCase().trim();
 }
 
-function matchesDestination(result: Record<string, unknown>, destination: string) {
+function matchesDestination(
+  result: Record<string, unknown>,
+  destination: string,
+  mode: 'all' | 'any' = 'all'
+) {
   const destinationParts = destination
     .split(',')
     .map(part => normalizeText(part))
@@ -49,6 +53,10 @@ function matchesDestination(result: Record<string, unknown>, destination: string
       : '';
     if (longName) haystacks.push(longName);
     if (shortName) haystacks.push(shortName);
+  }
+
+  if (mode === 'any') {
+    return destinationParts.some(part => haystacks.some(value => value.includes(part)));
   }
 
   return destinationParts.every(part => haystacks.some(value => value.includes(part)));
@@ -114,7 +122,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? googleData.results
           : [];
         const googleMatch = destination
-          ? googleResults.find(result => matchesDestination(result as Record<string, unknown>, destination))
+          ? googleResults.find(result => matchesDestination(result as Record<string, unknown>, destination, 'all'))
+            || googleResults.find(result => matchesDestination(result as Record<string, unknown>, destination, 'any'))
           : googleResults[0];
         const location = googleMatch && typeof googleMatch === 'object'
           ? (googleMatch as Record<string, unknown>)?.geometry
@@ -161,7 +170,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const results = await response.json();
       const list = Array.isArray(results) ? results : [];
       const matched = destination
-        ? list.find(result => matchesDestination(result as Record<string, unknown>, destination))
+        ? list.find(result => matchesDestination(result as Record<string, unknown>, destination, 'all'))
+          || list.find(result => matchesDestination(result as Record<string, unknown>, destination, 'any'))
+          || list[0]
         : list[0];
       coordinates = matched?.lat && matched?.lon
         ? { lat: Number(matched.lat), lng: Number(matched.lon) }

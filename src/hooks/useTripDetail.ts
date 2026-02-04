@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Trip, DayItinerary, Place, PlaceCategory, PlaceSource } from '@/types/trip';
 import { AUTH_DISABLED } from '@/lib/flags';
 import { getGuestTripById } from '@/lib/guestTrips';
+import { sanitizeTrip } from '@/lib/itinerarySanitizer';
 
 interface DbTrip {
   id: string;
@@ -95,7 +96,9 @@ export function useTripDetail(tripId: string | undefined) {
     queryFn: async (): Promise<Trip | null> => {
       if (!tripId) return null;
       if (AUTH_DISABLED) {
-        return getGuestTripById(tripId) || null;
+        const guestTrip = getGuestTripById(tripId);
+        if (!guestTrip) return null;
+        return sanitizeTrip(guestTrip).trip;
       }
 
       // Fetch trip with author profile
@@ -211,7 +214,7 @@ export function useTripDetail(tripId: string | undefined) {
         pace: dbTrip.pace as Trip['pace'] || undefined,
       };
 
-      return trip;
+      return sanitizeTrip(trip).trip;
     },
     enabled: !!tripId,
   });

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { parseItineraryText } from './itinerary-parser';
+import { parseItineraryText } from './itinerary-parser.js';
 import {
   hatyaiSample,
   headersOnlySample,
   multiDaySample,
   mixedHeaderSample,
   noHeaderSample,
-} from '../../src/test/fixtures/itinerarySamples';
-import { expectDayLabels, expectDayPlaces, expectNoPlaceNamed } from '../../src/test/utils/itineraryAssertions';
+} from '../../src/test/fixtures/itinerarySamples.js';
+import { expectDayLabels, expectDayPlaces, expectNoPlaceNamed } from '../../src/test/utils/itineraryAssertions.js';
 
 describe('parseItineraryText', () => {
   it('groups by day headers and filters non-place lines', () => {

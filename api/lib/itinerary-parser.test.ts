@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseItineraryText } from './itinerary-parser.js';
 import {
+  commaSeparatedSample,
   hatyaiSample,
   headersOnlySample,
   multiDaySample,
@@ -83,9 +84,39 @@ describe('parseItineraryText', () => {
     expectNoPlaceNamed(result.days, 'Places from my itinerary');
   });
 
+  it('splits comma-separated places on a single line', () => {
+    const result = parseItineraryText(commaSeparatedSample);
+
+    expect(result.days).toHaveLength(1);
+    expectDayLabels(result.days, ['Day 1']);
+    expectDayPlaces(result.days, 0, [
+      'Neo Grand Hatyai',
+      'Krua Pa Yad 叫菜吃饭',
+      'thefellows.hdy café',
+      'Mookata Paeyim晚餐',
+      'Greeway Night Market 逛夜市',
+    ]);
+  });
+
   it('preserves time tokens that are part of a place name', () => {
     const result = parseItineraryText(`DAY 1\n7AM Cafe\n11:11 Coffee\n9am coffee`);
 
     expectDayPlaces(result.days, 0, ['7AM Cafe', '11:11 Coffee', 'coffee']);
+  });
+
+  it('keeps day headers with commas as headers', () => {
+    const result = parseItineraryText(`DAY 1, Wed\nPlace A, Place B\nDAY 2, Thu\nPlace C`);
+
+    expect(result.days).toHaveLength(2);
+    expectDayLabels(result.days, ['DAY 1, Wed', 'DAY 2, Thu']);
+    expectDayPlaces(result.days, 0, ['Place A', 'Place B']);
+    expectDayPlaces(result.days, 1, ['Place C']);
+    expectNoPlaceNamed(result.days, 'DAY 1, Wed');
+  });
+
+  it('preserves time-like place names when comma-separated', () => {
+    const result = parseItineraryText('7AM Cafe, 11:11 Coffee');
+
+    expectDayPlaces(result.days, 0, ['7AM Cafe', '11:11 Coffee']);
   });
 });

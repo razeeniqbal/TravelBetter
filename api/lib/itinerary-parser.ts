@@ -39,6 +39,8 @@ const META_LINE_PATTERNS = [
   /^\s*i am planning a trip to\b/i,
 ];
 
+const COMMA_SEPARATOR_REGEX = /[，,]/;
+
 function stripLeadingMarkers(value: string) {
   return value.replace(LEADING_MARKERS_REGEX, '').trim();
 }
@@ -72,6 +74,15 @@ function extractTimePrefix(value: string) {
     timeText: match[1],
     rest,
   };
+}
+
+function splitLineIntoSegments(rawLine: string) {
+  const segments = rawLine.split(COMMA_SEPARATOR_REGEX);
+  const nonEmpty = segments.map(segment => segment.trim()).filter(Boolean);
+  if (nonEmpty.length <= 1) {
+    return [rawLine];
+  }
+  return nonEmpty;
 }
 
 function isExcludedLine(line: string) {
@@ -199,33 +210,39 @@ export function parseItineraryText(rawText: string, destinationHint?: string | n
       continue;
     }
 
-    const { timeText, rest } = extractTimePrefix(rawLine);
-    const cleaned = cleanLine(rest);
-    if (!cleaned) continue;
-    if (!hasLetters(cleaned)) continue;
-    if (isMetaLine(cleaned)) continue;
+    const segments = splitLineIntoSegments(rawLine);
 
-    const extractedPlace = extractPlaceFromTravelLine(cleaned);
-    if (extractedPlace) {
+    for (const segment of segments) {
+      if (!segment.trim()) continue;
+
+      const { timeText, rest } = extractTimePrefix(segment);
+      const cleaned = cleanLine(rest);
+      if (!cleaned) continue;
+      if (!hasLetters(cleaned)) continue;
+      if (isMetaLine(cleaned)) continue;
+
+      const extractedPlace = extractPlaceFromTravelLine(cleaned);
+      if (extractedPlace) {
+        currentDay.places.push({
+          name: extractedPlace,
+          source: 'user',
+          timeText,
+        });
+        continue;
+      }
+
+      if (isTravelOnlyLine(cleaned)) continue;
+      if (isExcludedLine(cleaned)) continue;
+
+      const normalized = stripTrailingTime(cleaned);
+      if (!normalized) continue;
+
       currentDay.places.push({
-        name: extractedPlace,
+        name: normalized,
         source: 'user',
         timeText,
       });
-      continue;
     }
-
-    if (isTravelOnlyLine(cleaned)) continue;
-    if (isExcludedLine(cleaned)) continue;
-
-    const normalized = stripTrailingTime(cleaned);
-    if (!normalized) continue;
-
-    currentDay.places.push({
-      name: normalized,
-      source: 'user',
-      timeText,
-    });
   }
 
   commitCurrentDay(sawDayHeader);

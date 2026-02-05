@@ -13,6 +13,76 @@ import type { ParsedDayGroup } from '@/types/itinerary';
 
 type ChatStep = 'customize' | 'preview' | 'loading' | 'suggestions';
 
+const COMMA_SEPARATOR_REGEX = /[，,]/;
+
+function splitCommaCandidates(value: string) {
+  return value
+    .split(COMMA_SEPARATOR_REGEX)
+    .map(segment => segment.trim())
+    .filter(Boolean);
+}
+
+export function parsePlacesFromPrompt(prompt: string, fallback: string[]): string[] {
+  const lines = prompt.split(/\r?\n/).map(line => line.trim());
+  let extracted: string[] = [];
+  const seen = new Set<string>();
+  const headerIndex = lines.findIndex(line => /places from my itinerary/i.test(line));
+
+  const pushPlace = (value: string) => {
+    const cleaned = value.replace(/^[-*•]\s*/, '').trim();
+    if (!cleaned) return;
+
+    const segments = splitCommaCandidates(cleaned);
+    const candidates = segments.length > 1 ? segments : [cleaned];
+
+    for (const candidate of candidates) {
+      const key = candidate.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      extracted.push(candidate);
+    }
+  };
+
+  if (headerIndex >= 0) {
+    for (let i = headerIndex + 1; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line) {
+        if (extracted.length > 0) break;
+        continue;
+      }
+      pushPlace(line);
+    }
+  }
+
+  if (extracted.length === 0) {
+    for (const line of lines) {
+      if (/^[-*•]\s+/.test(line)) {
+        pushPlace(line);
+      }
+    }
+  }
+
+  if (extracted.length === 1 && COMMA_SEPARATOR_REGEX.test(extracted[0])) {
+    const split = splitCommaCandidates(extracted[0]);
+    if (split.length > 1) {
+      const deduped: string[] = [];
+      const splitSeen = new Set<string>();
+      for (const item of split) {
+        const key = item.toLowerCase();
+        if (splitSeen.has(key)) continue;
+        splitSeen.add(key);
+        deduped.push(item);
+      }
+      return deduped;
+    }
+    if (fallback.length > extracted.length) {
+      return fallback;
+    }
+  }
+
+  return extracted.length > 0 ? extracted : fallback;
+}
+
 interface PersonalizationChatInterfaceProps {
   destination: string;
   seedPlaces: string[];
@@ -83,42 +153,6 @@ export function PersonalizationChatInterface({
     setAutoFilledPrompt(true);
   }, [parsedRequest, setCustomPrompt]);
 
-  const parsePlacesFromPrompt = (prompt: string, fallback: string[]): string[] => {
-    const lines = prompt.split(/\r?\n/).map(line => line.trim());
-    const extracted: string[] = [];
-    const seen = new Set<string>();
-    const headerIndex = lines.findIndex(line => /places from my itinerary/i.test(line));
-
-    const pushPlace = (value: string) => {
-      const cleaned = value.replace(/^[-*•]\s*/, '').trim();
-      if (!cleaned) return;
-      const key = cleaned.toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      extracted.push(cleaned);
-    };
-
-    if (headerIndex >= 0) {
-      for (let i = headerIndex + 1; i < lines.length; i += 1) {
-        const line = lines[i];
-        if (!line) {
-          if (extracted.length > 0) break;
-          continue;
-        }
-        pushPlace(line);
-      }
-    }
-
-    if (extracted.length === 0) {
-      for (const line of lines) {
-        if (/^[-*•]\s+/.test(line)) {
-          pushPlace(line);
-        }
-      }
-    }
-
-    return extracted.length > 0 ? extracted : fallback;
-  };
 
   const handleGetSuggestions = async () => {
     if (!isValid) {

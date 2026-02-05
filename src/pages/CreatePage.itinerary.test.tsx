@@ -53,4 +53,55 @@ describe('CreatePage itinerary preview', () => {
     expect(screen.getByText('DAY 2 - Thu')).toBeInTheDocument();
     expect(screen.getByText('LX Factory')).toBeInTheDocument();
   });
+
+  it('shows comma-separated places as separate preview bullets', async () => {
+    mockFetchOnce({
+      json: {
+        places: [
+          { name: 'Neo Grand Hatyai', category: 'attraction' },
+          { name: 'Krua Pa Yad 叫菜吃饭', category: 'restaurant' },
+          { name: 'thefellows.hdy café', category: 'cafe' },
+          { name: 'Mookata Paeyim晚餐', category: 'restaurant' },
+          { name: 'Greeway Night Market 逛夜市', category: 'market' },
+        ],
+        destination: 'Hatyai',
+        cleanedRequest: 'Places from my itinerary:\n- Neo Grand Hatyai\n- Krua Pa Yad 叫菜吃饭\n- thefellows.hdy café\n- Mookata Paeyim晚餐\n- Greeway Night Market 逛夜市',
+        previewText: 'Places from my itinerary:\n- Neo Grand Hatyai\n- Krua Pa Yad 叫菜吃饭\n- thefellows.hdy café\n- Mookata Paeyim晚餐\n- Greeway Night Market 逛夜市',
+        days: [
+          {
+            label: 'Day 1',
+            places: [
+              { name: 'Neo Grand Hatyai', source: 'user' },
+              { name: 'Krua Pa Yad 叫菜吃饭', source: 'user' },
+              { name: 'thefellows.hdy café', source: 'user' },
+              { name: 'Mookata Paeyim晚餐', source: 'user' },
+              { name: 'Greeway Night Market 逛夜市', source: 'user' },
+            ],
+          },
+        ],
+        success: true,
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <CreatePage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
+      target: { value: 'Hatyai weekend itinerary' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /generate itinerary/i }));
+
+    const previewButton = await screen.findByRole('button', { name: /preview/i });
+    fireEvent.click(previewButton);
+
+    expect(await screen.findByText('Neo Grand Hatyai')).toBeInTheDocument();
+    expect(screen.getByText('Krua Pa Yad 叫菜吃饭')).toBeInTheDocument();
+    expect(screen.getByText('thefellows.hdy café')).toBeInTheDocument();
+    expect(screen.getByText('Mookata Paeyim晚餐')).toBeInTheDocument();
+    expect(screen.getByText('Greeway Night Market 逛夜市')).toBeInTheDocument();
+  });
 });

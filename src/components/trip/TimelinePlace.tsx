@@ -12,7 +12,19 @@ interface TimelinePlaceProps {
 
 export function TimelinePlace({ place, index, time, isLast, onClick }: TimelinePlaceProps) {
   return (
-    <div className="relative flex gap-4" onClick={onClick}>
+    <div
+      className="relative flex gap-4"
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+    >
       {/* Timeline Line & Number */}
       <div className="relative flex flex-col items-center">
         <div className={cn(

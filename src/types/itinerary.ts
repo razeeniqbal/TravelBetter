@@ -3,6 +3,8 @@ export type ParsedPlaceSource = 'user' | 'ai';
 export interface ParsedPlace {
   name: string;
   source: ParsedPlaceSource;
+  displayName?: string | null;
+  placeId?: string | null;
   notes?: string;
   timeText?: string;
 }

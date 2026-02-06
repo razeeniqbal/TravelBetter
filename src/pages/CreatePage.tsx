@@ -22,6 +22,8 @@ type FlowStep = 'hero' | 'personalization' | 'generating';
 
 interface ExtractedPlace {
   name: string;
+  displayName?: string;
+  placeId?: string | null;
   nameLocal?: string;
   category: string;
   description?: string;
@@ -343,8 +345,11 @@ export default function CreatePage() {
 
     const importedPlaceInputs: PlaceInput[] = finalUserPlaces.map(name => {
       const match = extractedByName.get(name.toLowerCase());
+      const canonicalName = match?.displayName || name;
       return {
-        name,
+        name: canonicalName,
+        displayName: match?.displayName,
+        placeId: match?.placeId ?? undefined,
         nameLocal: match?.nameLocal,
         category: match?.category || 'attraction',
         description: match?.description,

@@ -13,6 +13,7 @@ import { BottomSheet, BottomSheetContent, BottomSheetDescription, BottomSheetTit
 import { TimelinePlace } from '@/components/trip/TimelinePlace';
 import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getGoogleMapsReviewUrl } from '@/lib/googleMaps';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTripDetail } from '@/hooks/useTripDetail';
@@ -21,6 +22,7 @@ import { useRemixTrip } from '@/hooks/useRemixTrip';
 import { useCreateDayItinerary } from '@/hooks/useUserTrips';
 import { supabase } from '@/integrations/supabase/client';
 import { AUTH_DISABLED } from '@/lib/flags';
+import type { Place } from '@/types/trip';
 
 export default function TripDetailPage() {
   const { tripId } = useParams();
@@ -220,6 +222,15 @@ export default function TripDetailPage() {
       return;
     }
     navigate(`/trip/${tripId}/review`);
+  };
+
+  const handleOpenPlaceReview = (place: Place) => {
+    const reviewUrl = getGoogleMapsReviewUrl({
+      placeId: place.placeId,
+      displayName: place.displayName,
+      name: place.name,
+    });
+    window.open(reviewUrl, '_blank', 'noopener,noreferrer');
   };
 
   const shareUrl = `${window.location.origin}/trip/${tripId}`;
@@ -475,6 +486,7 @@ export default function TripDetailPage() {
                         onReorder={reorderPlaces}
                         onRemove={removePlace}
                         onSetAnchor={setAsAnchor}
+                        onPlaceClick={handleOpenPlaceReview}
                       />
                     ) : (
                       <div className="space-y-3">
@@ -485,7 +497,7 @@ export default function TripDetailPage() {
                             index={index + 1}
                             time={getTimeForIndex(index)}
                             isLast={index === previewPlaces.length - 1}
-                            onClick={() => navigate(`/place/${place.id}`)}
+                            onClick={() => handleOpenPlaceReview(place)}
                           />
                         ))}
                         {previewRemaining > 0 && (

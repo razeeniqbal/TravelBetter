@@ -419,6 +419,8 @@ export function useCreateTrip() {
 // Input for creating a trip with places
 export interface PlaceInput {
   name: string;
+  displayName?: string;
+  placeId?: string;
   nameLocal?: string;
   category: string;
   description?: string;
@@ -471,7 +473,9 @@ export function useCreateTripWithPlaces() {
             if (!place) return;
             itinerary[dayIndex].places.push({
               id: createGuestPlaceId(tripId, index + dayIndex * 1000),
-              name: place.name,
+              name: place.displayName ?? place.name,
+              displayName: place.displayName,
+              placeId: place.placeId,
               nameLocal: place.nameLocal,
               category: (place.category || 'culture') as Place['category'],
               description: place.description,
@@ -547,7 +551,7 @@ export function useCreateTripWithPlaces() {
       // 3. Insert all places into places table
       if (placesWithCoords.length > 0) {
         const placeInserts = placesWithCoords.map(p => ({
-          name: p.name,
+          name: p.displayName ?? p.name,
           name_local: p.nameLocal || null,
           category: p.category || 'attraction',
           description: p.description || null,

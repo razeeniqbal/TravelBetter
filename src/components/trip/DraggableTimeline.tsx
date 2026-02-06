@@ -14,7 +14,6 @@ import {
 } from '@dnd-kit/sortable';
 import { DraggableTimelinePlace } from './DraggableTimelinePlace';
 import { Place } from '@/types/trip';
-import { useNavigate } from 'react-router-dom';
 
 interface DraggableTimelineProps {
   places: Place[];
@@ -24,6 +23,7 @@ interface DraggableTimelineProps {
   onReorder: (dayIndex: number, sourceIdx: number, destIdx: number) => void;
   onRemove: (dayIndex: number, placeIndex: number) => void;
   onSetAnchor: (placeId: string) => void;
+  onPlaceClick?: (place: Place) => void;
 }
 
 export function DraggableTimeline({
@@ -34,9 +34,8 @@ export function DraggableTimeline({
   onReorder,
   onRemove,
   onSetAnchor,
+  onPlaceClick,
 }: DraggableTimelineProps) {
-  const navigate = useNavigate();
-  
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -83,7 +82,7 @@ export function DraggableTimeline({
               isLast={idx === places.length - 1}
               isEditMode={isEditMode}
               isAnchor={place.id === anchorPlaceId}
-              onClick={() => navigate(`/place/${place.id}`)}
+              onClick={() => onPlaceClick?.(place)}
               onRemove={() => onRemove(dayIndex, idx)}
               onSetAnchor={() => onSetAnchor(place.id)}
             />

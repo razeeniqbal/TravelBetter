@@ -121,6 +121,14 @@ export interface ExtractedPlace {
   tips?: string[];
   latitude?: number;
   longitude?: number;
+  displayName?: string;
+  placeId?: string | null;
+  formattedAddress?: string | null;
+  addressComponents?: {
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+  };
 }
 
 export interface ExtractPlacesFromUrlResponse {
@@ -190,8 +198,12 @@ export const api = {
   extractPlacesFromImage: (image: string, destination?: string) =>
     fetchApi<ExtractPlacesFromImageResponse>('extract-places-from-image', { image, destination }),
 
-  extractPlacesFromText: (text: string, destination?: string) =>
-    fetchApi<ExtractPlacesFromTextResponse>('extract-places-from-text', { text, destination }),
+  extractPlacesFromText: (text: string, destination?: string, durationDays?: number) =>
+    fetchApi<ExtractPlacesFromTextResponse>('extract-places-from-text', {
+      text,
+      destination,
+      duration_days: durationDays,
+    }),
 
   parseItineraryText: (rawText: string, destinationHint?: string) =>
     fetchApi<ParseItineraryTextResponse>('parse-itinerary-text', { raw_text: rawText, destination_hint: destinationHint }),

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getGeminiUrl, getGeminiUrlWithModel, parseGeminiJson } from './_shared/gemini.js';
-import { parseItineraryText } from './lib/itinerary-parser.js';
+import { buildRequest, parseItineraryText } from './lib/itinerary-parser.js';
+import { resolvePlaceCandidate } from './lib/place-normalizer.js';
 
 const EMOJI_REGEX = /[\p{Extended_Pictographic}]/gu;
 const VARIATION_SELECTOR_REGEX = /[\uFE0E\uFE0F]/g;
@@ -36,6 +37,36 @@ function shouldExcludePlaceName(name: string, dayLabels?: Set<string>) {
   return false;
 }
 
+function hasExplicitDayHeaders(text: string) {
+  return text
+    .split(/\r?\n/)
+    .map(line => normalizeLabel(line))
+    .some(line => DAY_HEADER_REGEX.test(line) || DAY_HEADER_COMPACT_REGEX.test(line));
+}
+
+function buildDayGroupsFromPlaces(
+  places: ExtractedPlace[],
+  durationDays: number | null
+) {
+  const totalDays = durationDays && durationDays > 1
+    ? Math.floor(durationDays)
+    : 1;
+  const chunkSize = Math.max(1, Math.ceil(places.length / totalDays));
+  const dayGroups = [] as Array<{ label: string; date: null; places: ExtractedPlace[] }>;
+
+  for (let i = 0; i < totalDays; i += 1) {
+    const start = i * chunkSize;
+    const end = start + chunkSize;
+    dayGroups.push({
+      label: `Day ${i + 1}`,
+      date: null,
+      places: places.slice(start, end),
+    });
+  }
+
+  return dayGroups;
+}
+
 interface ExtractedPlace {
   name: string;
   nameLocal?: string;
@@ -44,6 +75,14 @@ interface ExtractedPlace {
   tips?: string[];
   latitude?: number;
   longitude?: number;
+  displayName?: string;
+  placeId?: string | null;
+  formattedAddress?: string | null;
+  addressComponents?: {
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+  };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -60,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { text, destination } = req.body;
+    const { text, destination, duration_days } = req.body;
 
     if (!text) {
       return res.status(400).json({ error: 'Text is required' });
@@ -76,7 +115,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('Extracting places from text itinerary');
 
-    const parsed = parseItineraryText(text, destination || null);
+    const durationDays = typeof duration_days === 'number' && duration_days > 0
+      ? Math.floor(duration_days)
+      : null;
+    const parsed = parseItineraryText(text, destination || null, durationDays);
     const fallbackPlaces: ExtractedPlace[] = parsed.days
       .flatMap(day => day.places)
       .map(place => ({
@@ -208,17 +250,105 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
       : fallbackPlaces;
     const places = rawPlaces.filter(place => !shouldExcludePlaceName(place.name, dayLabelSet));
 
+    const destinationContext = typeof result.destination === 'string' && result.destination.trim()
+      ? result.destination.trim()
+      : typeof destination === 'string' && destination.trim()
+        ? destination.trim()
+        : parsed.destination || '';
+
+    const normalizationResults = [] as Array<Awaited<ReturnType<typeof resolvePlaceCandidate>>>;
+    for (const place of places) {
+      normalizationResults.push(await resolvePlaceCandidate(place.name, destinationContext || undefined));
+    }
+
+    const normalizedPlaces = places.map((place, index) => {
+      const normalized = normalizationResults[index];
+      const displayName = normalized.displayName || place.name;
+      return {
+        ...place,
+        name: displayName,
+        displayName,
+        placeId: normalized.placeId || null,
+        formattedAddress: normalized.formattedAddress || null,
+        addressComponents: normalized.addressComponents,
+      };
+    });
+
+    const destinationLabel = (() => {
+      const destinationValue = destinationContext.trim();
+      const normalizedDestination = normalizeLabel(destinationValue);
+      const matchesPlace = places.some(place => normalizeLabel(place.name) === normalizedDestination);
+      const shouldInfer = !destinationValue || matchesPlace;
+
+      if (!shouldInfer) return destinationValue;
+
+      const cityCounts = new Map<string, number>();
+      for (const normalized of normalizationResults) {
+        const city = normalized.addressComponents?.city || normalized.addressComponents?.region;
+        if (!city) continue;
+        cityCounts.set(city, (cityCounts.get(city) || 0) + 1);
+      }
+
+      let bestCity: string | null = null;
+      let bestCount = 0;
+      for (const [city, count] of cityCounts.entries()) {
+        if (count > bestCount) {
+          bestCity = city;
+          bestCount = count;
+        }
+      }
+
+      return bestCity || destinationValue;
+    })();
+
+    const parsedPlaceCount = parsed.days.reduce((total, day) => total + day.places.length, 0);
+    const shouldAutoGroup = parsedPlaceCount === 0
+      && normalizedPlaces.length > 0
+      && !hasExplicitDayHeaders(text);
+
+    const normalizedDays = shouldAutoGroup
+      ? buildDayGroupsFromPlaces(normalizedPlaces, durationDays)
+      : (() => {
+        const normalizedMap = new Map(
+          places.map((place, index) => [normalizeLabel(place.name), normalizedPlaces[index].name])
+        );
+
+        return parsed.days.map(day => ({
+          ...day,
+          places: day.places.map(place => {
+            const key = normalizeLabel(place.name);
+            return {
+              ...place,
+              name: normalizedMap.get(key) || place.name,
+            };
+          }),
+        }));
+      })();
+
+    const normalizedDayGroups = normalizedDays.map(day => ({
+      label: day.label,
+      date: day.date ?? null,
+      places: day.places.map(place => ({
+        name: place.name,
+        source: 'source' in place && place.source ? place.source : 'user',
+        notes: 'notes' in place ? place.notes : undefined,
+        timeText: 'timeText' in place ? place.timeText : undefined,
+      })),
+    }));
+
+    const cleanedRequest = buildRequest(normalizedDayGroups, destinationLabel || null);
+
     console.log(`Extracted ${places.length} places from text`);
 
     return res.status(200).json({
-      places,
-      summary: result.summary || `Found ${places.length} places`,
-      destination: result.destination || parsed.destination || '',
-      cleanedRequest: parsed.cleanedRequest,
-      previewText: parsed.previewText,
-      cleaned_request: parsed.cleanedRequest,
-      preview_text: parsed.previewText,
-      days: parsed.days,
+      places: normalizedPlaces,
+      summary: result.summary || `Found ${normalizedPlaces.length} places`,
+      destination: destinationLabel || '',
+      cleanedRequest,
+      previewText: cleanedRequest,
+      cleaned_request: cleanedRequest,
+      preview_text: cleanedRequest,
+      days: normalizedDayGroups,
       warnings: parsed.warnings,
       success: true
     });

@@ -5,6 +5,8 @@ export type PlaceSource = 'user' | 'ai';
 export interface Place {
   id: string;
   name: string;
+  displayName?: string;
+  placeId?: string;
   nameLocal?: string;
   category: PlaceCategory;
   source: PlaceSource;

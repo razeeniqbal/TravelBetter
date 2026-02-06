@@ -137,4 +137,46 @@ describe('CreatePage itinerary preview', () => {
 
     expect(payload.duration_days).toBe(2);
   });
+
+  it('renders canonical place names in the preview', async () => {
+    mockFetchOnce({
+      json: {
+        places: [
+          {
+            name: 'klcc',
+            displayName: 'Kuala Lumpur City Centre (KLCC)',
+            placeId: 'place-klcc',
+            category: 'attraction',
+          },
+        ],
+        destination: 'Kuala Lumpur',
+        cleanedRequest: 'Places from my itinerary:\n- Kuala Lumpur City Centre (KLCC)',
+        previewText: 'Places from my itinerary:\n- Kuala Lumpur City Centre (KLCC)',
+        days: [
+          {
+            label: 'Day 1',
+            places: [{ name: 'Kuala Lumpur City Centre (KLCC)', source: 'user' }],
+          },
+        ],
+        success: true,
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <CreatePage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
+      target: { value: '2 days in klcc, trx' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /generate itinerary/i }));
+
+    const previewButton = await screen.findByRole('button', { name: /preview/i });
+    fireEvent.click(previewButton);
+
+    expect(await screen.findByText('Kuala Lumpur City Centre (KLCC)')).toBeInTheDocument();
+  });
 });

@@ -2,6 +2,8 @@ import { api } from '@/lib/api';
 
 export interface ResolvablePlaceInput {
   name: string;
+  displayName?: string;
+  placeId?: string;
   coordinates?: { lat: number; lng: number };
   dayIndex?: number;
   dayLabel?: string;
@@ -30,12 +32,28 @@ export async function resolvePlacesForTrip<T extends ResolvablePlaceInput>(
   const resolvedMap = new Map(
     data.places
       .filter(place => place.resolved && typeof place.lat === 'number' && typeof place.lng === 'number')
-      .map(place => [place.name.toLowerCase(), { lat: place.lat as number, lng: place.lng as number }])
+      .map(place => [
+        place.name.toLowerCase(),
+        {
+          lat: place.lat as number,
+          lng: place.lng as number,
+          displayName: place.displayName ?? null,
+          placeId: place.placeId ?? null,
+        },
+      ])
   );
 
   return places.map(place => {
     if (place.coordinates) return place;
     const match = resolvedMap.get(place.name.toLowerCase());
-    return match ? { ...place, coordinates: match } : place;
+    if (!match) return place;
+    const canonicalName = match.displayName || place.displayName || place.name;
+    return {
+      ...place,
+      name: canonicalName,
+      displayName: match.displayName ?? place.displayName,
+      placeId: match.placeId ?? place.placeId,
+      coordinates: { lat: match.lat, lng: match.lng },
+    };
   });
 }

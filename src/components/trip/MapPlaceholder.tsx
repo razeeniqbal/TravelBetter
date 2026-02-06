@@ -212,7 +212,7 @@ export function MapPlaceholder({
             <MarkerContent className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[11px] font-semibold text-slate-700 shadow-md ring-1 ring-slate-200">
               {index + 1}
             </MarkerContent>
-            <MarkerTooltip>{place.name}</MarkerTooltip>
+            <MarkerTooltip>{place.displayName || place.name}</MarkerTooltip>
           </MapMarker>
         ))}
         <MapControls showZoom position={controlsPosition} />

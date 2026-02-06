@@ -181,7 +181,10 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       styleTimeoutRef.current = setTimeout(() => {
         setIsStyleLoaded(true);
         if (projection) {
-          map.setProjection(projection);
+          const projectionMap = map as MapLibreGL.Map & {
+            setProjection?: (value: MapLibreGL.ProjectionSpecification) => void;
+          };
+          projectionMap.setProjection?.(projection);
         }
       }, 100);
     };
@@ -517,17 +520,45 @@ function MarkerTooltip({
 
     tooltip.setDOMContent(container);
 
-    const handleMouseEnter = () => {
+    const showTooltip = () => {
       tooltip.setLngLat(marker.getLngLat()).addTo(map);
     };
-    const handleMouseLeave = () => tooltip.remove();
 
-    marker.getElement()?.addEventListener("mouseenter", handleMouseEnter);
-    marker.getElement()?.addEventListener("mouseleave", handleMouseLeave);
+    const hideTooltip = () => tooltip.remove();
+
+    const handleMouseEnter = () => showTooltip();
+    const handleMouseLeave = () => hideTooltip();
+    const handleClick = (event: MouseEvent) => {
+      event.stopPropagation();
+      if (tooltip.isOpen()) {
+        hideTooltip();
+        return;
+      }
+      showTooltip();
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      event.stopPropagation();
+      if (tooltip.isOpen()) {
+        hideTooltip();
+        return;
+      }
+      showTooltip();
+    };
+    const handleMapClick = () => hideTooltip();
+
+    const element = marker.getElement();
+    element?.addEventListener("mouseenter", handleMouseEnter);
+    element?.addEventListener("mouseleave", handleMouseLeave);
+    element?.addEventListener("click", handleClick);
+    element?.addEventListener("touchstart", handleTouchStart);
+    map.on("click", handleMapClick);
 
     return () => {
-      marker.getElement()?.removeEventListener("mouseenter", handleMouseEnter);
-      marker.getElement()?.removeEventListener("mouseleave", handleMouseLeave);
+      element?.removeEventListener("mouseenter", handleMouseEnter);
+      element?.removeEventListener("mouseleave", handleMouseLeave);
+      element?.removeEventListener("click", handleClick);
+      element?.removeEventListener("touchstart", handleTouchStart);
+      map.off("click", handleMapClick);
       tooltip.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

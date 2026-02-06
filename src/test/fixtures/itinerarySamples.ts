@@ -57,3 +57,9 @@ Places from my itinerary:
 - Baan Khun Bhu
 - Hood Hatyai café ️
 - 古早味炭烧鸡蛋糕`;
+
+export const hatyaiSentenceSample = `trip to hatyai, i want to go neo grand hatyai, krua pa yad, thefellows.hdy café, mookata paeyim, greeway night market`;
+
+export const hatyaiOneDaySample = `1 day to go neo grand hatyai, krua pa yad, thefellows.hdy café, mookata paeyim, greeway night market`;
+
+export const hatyaiListSample = `neo grand hatyai, krua pa yad, thefellows.hdy café, mookata paeyim, greeway night market`;

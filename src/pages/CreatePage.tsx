@@ -36,6 +36,11 @@ function parseDuration(description: string): number {
   return daysMatch ? parseInt(daysMatch[1], 10) : 3;
 }
 
+function extractDurationDays(description: string): number | null {
+  const daysMatch = description.match(/(\d+)\s*days?/i);
+  return daysMatch ? parseInt(daysMatch[1], 10) : null;
+}
+
 // Simple helper to extract destination(s) for display purposes
 // The actual destination will be determined by AI
 function extractBasicDestination(description: string): string {
@@ -121,6 +126,10 @@ function isLikelyItinerary(description: string): boolean {
   if (!trimmed) return false;
   const lineCount = description.split(/\r?\n/).filter(line => line.trim()).length;
   if (lineCount > 1) return true;
+
+  const hasDuration = /\b\d+\s*days?\b/i.test(trimmed);
+  const hasCommaList = /[，,]/.test(trimmed);
+  if (hasDuration && hasCommaList) return true;
 
   return /(day\s*\d+|itinerary|schedule|>>|\d{1,2}[:.]\d{2}\s*(am|pm)?)/i.test(trimmed);
 }
@@ -416,12 +425,14 @@ export default function CreatePage() {
     setParsedDayGroups([]);
 
     const destinationSeed = getDisplayDestination(tripDescription);
+    const durationDays = extractDurationDays(tripDescription);
     const fallbackPlaces = extractFallbackPlaces(tripDescription);
 
     try {
       const { data, error } = await api.extractPlacesFromText(
         tripDescription,
-        destinationSeed || undefined
+        destinationSeed || undefined,
+        durationDays || undefined
       );
 
       const resolvedDestination = data?.destination || destinationSeed;

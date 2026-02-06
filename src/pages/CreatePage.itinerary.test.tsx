@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import CreatePage from './CreatePage';
-import { multiDaySample } from '@/test/fixtures/itinerarySamples';
+import { durationCommaSample, multiDaySample } from '@/test/fixtures/itinerarySamples';
 import { mockFetchOnce } from '@/test/utils/mockFetch';
 
 vi.mock('@/hooks/useUserTrips', () => ({
@@ -103,5 +103,38 @@ describe('CreatePage itinerary preview', () => {
     expect(screen.getByText('thefellows.hdy café')).toBeInTheDocument();
     expect(screen.getByText('Mookata Paeyim晚餐')).toBeInTheDocument();
     expect(screen.getByText('Greeway Night Market 逛夜市')).toBeInTheDocument();
+  });
+
+  it('sends duration days for duration-based comma lists', async () => {
+    mockFetchOnce({
+      json: {
+        places: [],
+        destination: 'Kuala Lumpur',
+        cleanedRequest: 'Places from my itinerary:',
+        previewText: 'Places from my itinerary:',
+        days: [],
+        success: true,
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <CreatePage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
+      target: { value: durationCommaSample },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /generate itinerary/i }));
+
+    await screen.findByRole('button', { name: /preview/i });
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const [, request] = fetchMock.mock.calls[0];
+    const payload = JSON.parse(request.body as string) as Record<string, unknown>;
+
+    expect(payload.duration_days).toBe(2);
   });
 });

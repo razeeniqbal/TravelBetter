@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parseItineraryText } from './itinerary-parser.js';
 import {
   commaSeparatedSample,
+  durationCommaSample,
+  durationCommaShortSample,
   hatyaiSample,
   headersOnlySample,
   multiDaySample,
@@ -96,6 +98,31 @@ describe('parseItineraryText', () => {
       'Mookata Paeyim晚餐',
       'Greeway Night Market 逛夜市',
     ]);
+  });
+
+  it('auto-assigns places into days when duration is provided', () => {
+    const result = parseItineraryText(durationCommaSample, null, 2);
+
+    expectDayLabels(result.days, ['Day 1', 'Day 2']);
+    expectDayPlaces(result.days, 0, ['klcc', 'trx']);
+    expectDayPlaces(result.days, 1, ['midvalley']);
+  });
+
+  it('keeps empty day groups when duration exceeds place count', () => {
+    const result = parseItineraryText(durationCommaShortSample, null, 3);
+
+    expectDayLabels(result.days, ['Day 1', 'Day 2', 'Day 3']);
+    expectDayPlaces(result.days, 0, ['klcc']);
+    expectDayPlaces(result.days, 1, ['trx']);
+    expectDayPlaces(result.days, 2, []);
+  });
+
+  it('preserves explicit day headers when duration is provided', () => {
+    const result = parseItineraryText('Day 1\nPlace A\nDay 2\nPlace B', null, 3);
+
+    expectDayLabels(result.days, ['Day 1', 'Day 2']);
+    expectDayPlaces(result.days, 0, ['Place A']);
+    expectDayPlaces(result.days, 1, ['Place B']);
   });
 
   it('preserves time tokens that are part of a place name', () => {

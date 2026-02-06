@@ -15,12 +15,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { raw_text, destination_hint } = req.body || {};
+    const { raw_text, destination_hint, duration_days } = req.body || {};
     if (!raw_text || typeof raw_text !== 'string') {
       return res.status(400).json({ error: 'raw_text is required' });
     }
 
-    const parsed = parseItineraryText(raw_text, destination_hint || null);
+    const durationDays = typeof duration_days === 'number' && duration_days > 0
+      ? Math.floor(duration_days)
+      : null;
+
+    const parsed = parseItineraryText(raw_text, destination_hint || null, durationDays);
 
     return res.status(200).json({
       cleanedRequest: parsed.cleanedRequest,

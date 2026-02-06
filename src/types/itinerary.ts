@@ -21,6 +21,12 @@ export interface ParseItineraryResponse {
   warnings?: string[];
 }
 
+export interface ExtractPlacesFromTextRequest {
+  text: string;
+  destination?: string;
+  durationDays?: number;
+}
+
 export interface ResolvePlacesRequest {
   destinationContext?: string;
   places: Array<{
@@ -33,11 +39,20 @@ export interface ResolvePlacesRequest {
 export interface ResolvedPlaceResult {
   name: string;
   resolved: boolean;
+  displayName?: string | null;
+  placeId?: string | null;
+  formattedAddress?: string | null;
+  addressComponents?: {
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+  };
   address?: string | null;
   lat?: number | null;
   lng?: number | null;
   bestGuess?: boolean;
   confidence?: 'high' | 'medium' | 'low';
+  source?: string;
 }
 
 export interface ResolvePlacesResponse {

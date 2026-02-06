@@ -25,6 +25,10 @@ DAY 2`;
 
 export const commaSeparatedSample = `12pm reached Neo Grand Hatyai, Krua Pa Yad 叫菜吃饭, thefellows.hdy café, Mookata Paeyim晚餐 5pm, Greeway Night Market 逛夜市 6pm`;
 
+export const durationCommaSample = `2 days in klcc, trx, midvalley`;
+
+export const durationCommaShortSample = `3 days in klcc, trx`;
+
 export const hatyaiSample = `I'm planning a trip to 🇹🇭 HATYAI TRIP 6/8-8/8.
 
 Places from my itinerary:

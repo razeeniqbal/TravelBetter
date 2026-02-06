@@ -27,6 +27,7 @@ const EMOJI_REGEX = /[\p{Extended_Pictographic}]/gu;
 const VARIATION_SELECTOR_REGEX = /[\uFE0E\uFE0F]/g;
 const TRAILING_ASTERISK_REGEX = /\s*\*+$/;
 const DATE_RANGE_REGEX = /\b\d{1,2}\/\d{1,2}(?:\s*[-–]\s*\d{1,2}\/\d{1,2})\b/;
+const DURATION_PREFIX_REGEX = /^\s*\d+\s*days?\s*(?:in|at|around)?\s+/i;
 
 const EXCLUDED_PATTERNS = [
   /^\s*(notes?|reminder|todo|itinerary|schedule|tips?)\b/i,
@@ -103,6 +104,11 @@ function stripTrailingTime(value: string) {
   return result;
 }
 
+function stripDurationPrefix(value: string, durationDays?: number | null, hasHeaders?: boolean) {
+  if (!durationDays || durationDays <= 1 || hasHeaders) return value;
+  return value.replace(DURATION_PREFIX_REGEX, '');
+}
+
 function isLikelyTimeNamedPlace(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return false;
@@ -152,7 +158,7 @@ function isTravelOnlyLine(line: string) {
 }
 
 
-function buildRequest(days: ParsedDayGroup[], destinationHint?: string | null) {
+export function buildRequest(days: ParsedDayGroup[], destinationHint?: string | null) {
   const intro = destinationHint?.trim()
     ? `I'm planning a trip to ${destinationHint.trim()}.`
     : "I'm planning a trip.";
@@ -172,7 +178,11 @@ function buildRequest(days: ParsedDayGroup[], destinationHint?: string | null) {
   return lines.join('\n').trim();
 }
 
-export function parseItineraryText(rawText: string, destinationHint?: string | null): ParsedItineraryResult {
+export function parseItineraryText(
+  rawText: string,
+  destinationHint?: string | null,
+  durationDays?: number | null
+): ParsedItineraryResult {
   const lines = rawText.split(/\r?\n/);
   const days: ParsedDayGroup[] = [];
   const warnings: string[] = [];
@@ -215,7 +225,8 @@ export function parseItineraryText(rawText: string, destinationHint?: string | n
     for (const segment of segments) {
       if (!segment.trim()) continue;
 
-      const { timeText, rest } = extractTimePrefix(segment);
+      const normalizedSegment = stripDurationPrefix(segment, durationDays, sawDayHeader);
+      const { timeText, rest } = extractTimePrefix(normalizedSegment);
       const cleaned = cleanLine(rest);
       if (!cleaned) continue;
       if (!hasLetters(cleaned)) continue;
@@ -249,6 +260,25 @@ export function parseItineraryText(rawText: string, destinationHint?: string | n
 
   if (!sawDayHeader && days.length > 0) {
     days[0].label = 'Day 1';
+  }
+
+  if (!sawDayHeader && durationDays && durationDays > 1) {
+    const totalDays = Math.max(1, Math.floor(durationDays));
+    const allPlaces = days[0]?.places ?? [];
+    const chunkSize = Math.max(1, Math.ceil(allPlaces.length / totalDays));
+    const regrouped: ParsedDayGroup[] = [];
+
+    for (let i = 0; i < totalDays; i += 1) {
+      const start = i * chunkSize;
+      const end = start + chunkSize;
+      regrouped.push({
+        label: `Day ${i + 1}`,
+        date: null,
+        places: allPlaces.slice(start, end),
+      });
+    }
+
+    days.splice(0, days.length, ...regrouped);
   }
 
   if (days.every(day => day.places.length === 0)) {

@@ -9,6 +9,7 @@ interface PlaceCardProps {
   index?: number;
   showWalkingTime?: boolean;
   onClick?: () => void;
+  onViewMap?: (place: Place) => void;
   isSelected?: boolean;
 }
 
@@ -17,8 +18,11 @@ export function PlaceCard({
   index, 
   showWalkingTime = true, 
   onClick,
+  onViewMap,
   isSelected 
 }: PlaceCardProps) {
+  const tags = (place.tags || []).filter(Boolean);
+
   return (
     <div className="relative">
       {/* Walking Time Connector */}
@@ -103,6 +107,9 @@ export function PlaceCard({
                   {place.rating}
                 </span>
               )}
+              {!place.rating && (
+                <span className="text-muted-foreground/80">Rating unavailable</span>
+              )}
             </div>
             
             {/* Source Badge */}
@@ -113,6 +120,31 @@ export function PlaceCard({
                   {place.sourceNote}
                 </span>
               )}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-1 text-[11px]">
+              {tags.length > 0 ? (
+                tags.slice(0, 3).map(tag => (
+                  <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                    #{tag}
+                  </span>
+                ))
+              ) : (
+                <span className="text-muted-foreground/80">No tags</span>
+              )}
+            </div>
+
+            <div className="mt-3">
+              <button
+                type="button"
+                className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onViewMap?.(place);
+                }}
+              >
+                View on map
+              </button>
             </div>
           </div>
         </div>

@@ -49,8 +49,9 @@ export default function PlaceDetailPage() {
   
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground" role="status">Loading place details...</p>
       </div>
     );
   }
@@ -86,26 +87,6 @@ export default function PlaceDetailPage() {
       return;
     }
     toggleSavePlace.mutate({ placeId: placeId!, isSaved, placeData: placeDataForSave });
-  };
-
-  const handleSaveClick = () => {
-    if (!user) {
-      toast({
-        title: 'Sign in required',
-        description: 'Please sign in to save places.',
-        variant: 'destructive',
-      });
-      navigate('/auth');
-      return;
-    }
-    if (!isSaved) {
-      toggleSavePlace.mutate({ placeId: placeId!, isSaved: false, placeData: placeDataForSave });
-    } else {
-      toast({
-        title: 'Already saved',
-        description: 'This place is in your saved places.',
-      });
-    }
   };
 
   const handleAddToItinerary = () => {
@@ -153,11 +134,8 @@ export default function PlaceDetailPage() {
 
   const shareUrl = `${window.location.origin}/place/${placeId}`;
 
-  // Use DB reviews if available, otherwise use sample reviews
-  const reviews = dbReviews.length > 0 ? dbReviews : [
-    { id: '1', name: 'Alex K.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop', rating: 5, time: '2 days ago', text: 'Amazing atmosphere! The morning light was perfect.' },
-    { id: '2', name: 'Sarah M.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=50&h=50&fit=crop', rating: 4, time: '1 week ago', text: 'Beautiful but crowded. Go early!' },
-  ];
+  const reviews = dbReviews.slice(0, 5);
+  const reviewShortfall = Math.max(0, 5 - reviews.length);
 
   return (
     <div className="min-h-screen bg-background">
@@ -245,14 +223,6 @@ export default function PlaceDetailPage() {
               <Eye className="h-4 w-4" />
               2.4k views
             </span>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 gap-1 text-white hover:bg-white/20"
-              onClick={handleSaveClick}
-            >
-              {isSaved ? 'Saved ✓' : 'Save'}
-            </Button>
           </div>
         </div>
       </div>
@@ -298,32 +268,43 @@ export default function PlaceDetailPage() {
           {/* Reviews */}
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-foreground">Reviews ({reviews.length})</h3>
-              <Button variant="link" size="sm" className="text-primary">See all</Button>
+              <h3 className="font-semibold text-foreground">Reviews ({reviews.length}/5)</h3>
+              {reviewShortfall > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {reviewShortfall} more unavailable
+                </span>
+              )}
             </div>
             <div className="space-y-3">
-              {reviews.map((review) => (
-                <div key={review.id} className="rounded-xl border bg-card p-3">
-                  <div className="flex items-start gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={review.avatar} />
-                      <AvatarFallback>{review.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{review.name}</span>
-                        <div className="flex">
-                          {Array.from({ length: review.rating }).map((_, i) => (
-                            <Star key={i} className="h-3 w-3 fill-amber-400 text-amber-400" />
-                          ))}
+              {reviews.length === 0 ? (
+                <div className="rounded-xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+                  No public reviews are available right now.
+                </div>
+              ) : (
+                reviews.map((review) => (
+                  <div key={review.id} className="rounded-xl border bg-card p-3">
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={review.avatar} />
+                        <AvatarFallback>{review.name[0]}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{review.name}</span>
+                          <div className="flex">
+                            {Array.from({ length: review.rating }).map((_, i) => (
+                              <Star key={i} className="h-3 w-3 fill-amber-400 text-amber-400" />
+                            ))}
+                          </div>
+                          <span className="text-xs text-muted-foreground">{review.time}</span>
                         </div>
-                        <span className="text-xs text-muted-foreground">{review.time}</span>
+                        <p className="mt-1 text-xs text-muted-foreground">via Google</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{review.text}</p>
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{review.text}</p>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

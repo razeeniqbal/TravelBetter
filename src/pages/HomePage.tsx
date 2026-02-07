@@ -1,9 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/navigation/BottomNav';
-import { TrendingDestinations } from '@/components/home/TrendingDestinations';
 import { SearchBar } from '@/components/home/SearchBar';
-import { DestinationCard } from '@/components/home/DestinationCard';
 import { sampleTrips } from '@/data/sampleTrips';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,13 +16,6 @@ import type { Trip } from '@/types/trip';
 
 const filters = ['All', 'Europe', 'Asia', 'Roadtrips', 'Beach', 'Culture'];
 
-const destinations = [
-  { id: 'jp', country: 'Japan', city: 'Tokyo', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&h=500&fit=crop' },
-  { id: 'it', country: 'Italy', city: 'Venice', image: 'https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=400&h=500&fit=crop' },
-  { id: 'kr', country: 'South Korea', city: 'Seoul', image: 'https://images.unsplash.com/photo-1534274867514-d5b47ef89ed7?w=400&h=500&fit=crop' },
-  { id: 'id', country: 'Indonesia', city: 'Bali', image: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&h=500&fit=crop' },
-];
-
 export default function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -34,13 +25,7 @@ export default function HomePage() {
   const { toast } = useToast();
 
   const [activeFilter, setActiveFilter] = useState('All');
-  const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
-  const [selectedTrending, setSelectedTrending] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-
-  const toggleDestination = (id: string) => {
-    setSelectedDestination(prev => prev === id ? null : id);
-  };
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
@@ -70,6 +55,33 @@ export default function HomePage() {
   // Fetch real public trips, fall back to sample data if none exist
   const { data: publicTrips, isLoading: isLoadingTrips } = useFeaturedTrips();
   const displayTrips: Trip[] = publicTrips && publicTrips.length > 0 ? publicTrips : sampleTrips;
+  const filteredTrips = useMemo(() => {
+    if (activeFilter === 'All') return displayTrips;
+
+    const normalizedFilter = activeFilter.toLowerCase();
+    return displayTrips.filter((trip) => {
+      const searchable = [
+        trip.destination,
+        trip.country,
+        ...(trip.tags || []),
+        ...(trip.travelStyle || []),
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      if (activeFilter === 'Roadtrips') {
+        return /road|drive|route/.test(searchable);
+      }
+      if (activeFilter === 'Beach') {
+        return /beach|coast|island|sea/.test(searchable);
+      }
+      if (activeFilter === 'Culture') {
+        return /culture|temple|museum|heritage|history/.test(searchable);
+      }
+
+      return searchable.includes(normalizedFilter);
+    });
+  }, [activeFilter, displayTrips]);
 
   const handleRemixClick = async (e: React.MouseEvent, trip: Trip) => {
     e.stopPropagation();
@@ -109,40 +121,6 @@ export default function HomePage() {
         />
       </div>
 
-      {/* Trending Destinations */}
-      <TrendingDestinations 
-        selected={selectedTrending} 
-        onSelect={setSelectedTrending} 
-      />
-
-      {/* Countries & City Section */}
-      <div className="px-4 py-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold text-foreground">Countries & City</h2>
-            <p className="text-xs text-muted-foreground">Select multiple destinations for your route</p>
-          </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="gap-1 text-primary"
-            onClick={() => navigate('/explore')}
-          >
-            See all <ArrowRight className="h-3 w-3" />
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {destinations.map((dest) => (
-            <DestinationCard
-              key={dest.id}
-              {...dest}
-              selected={selectedDestination === dest.id}
-              onSelect={toggleDestination}
-            />
-          ))}
-        </div>
-      </div>
-
       {/* Filter Pills */}
       <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-3">
         {filters.map((filter) => (
@@ -178,7 +156,7 @@ export default function HomePage() {
           </div>
         ) : (
         <div className="columns-2 gap-3 space-y-3">
-          {displayTrips.map((trip, index) => {
+          {filteredTrips.map((trip, index) => {
             const isSaved = savedTripIds.includes(trip.id);
             
             return (

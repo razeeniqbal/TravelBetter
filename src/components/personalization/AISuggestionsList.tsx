@@ -1,13 +1,14 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Check, X, Clock, MapPin, Sparkles } from 'lucide-react';
+import { Check, Circle, Clock, MapPin, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryBadge } from '@/components/badges/CategoryBadge';
 import type { PlaceCategory } from '@/types/trip';
+import { useMemo, useState } from 'react';
 
 export interface AISuggestion {
+  suggestionId?: string;
   name: string;
   nameLocal?: string;
   category: string;
@@ -20,41 +21,52 @@ export interface AISuggestion {
   neighborhood?: string;
   latitude?: number;
   longitude?: number;
-  accepted?: boolean;
-  rejected?: boolean;
+  confirmedDayNumber?: number;
 }
 
 interface AISuggestionsListProps {
   suggestions: AISuggestion[];
   processingTime?: number;
   requiredPlaces?: string[];
-  onAccept: (index: number) => void;
-  onReject: (index: number) => void;
-  onAcceptAll: () => void;
-  onContinue: () => void;
+  onContinue: (selectedSuggestions: AISuggestion[]) => void;
 }
 
 export function AISuggestionsList({
   suggestions,
   processingTime,
   requiredPlaces = [],
-  onAccept,
-  onReject,
-  onAcceptAll,
   onContinue,
 }: AISuggestionsListProps) {
-  const acceptedCount = suggestions.filter(s => s.accepted).length;
-  const pendingCount = suggestions.filter(s => !s.accepted && !s.rejected).length;
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const getSuggestionKey = (suggestion: AISuggestion, index: number) =>
+    suggestion.suggestionId || `suggestion-${index}-${suggestion.name.toLowerCase().replace(/\s+/g, '-')}`;
+
+  const selectedSuggestions = useMemo(
+    () => suggestions.filter((suggestion, index) => selectedIds.has(getSuggestionKey(suggestion, index))),
+    [selectedIds, suggestions]
+  );
+
+  const selectedCount = selectedSuggestions.length;
   const requiredCount = requiredPlaces.length;
-  const totalSelectedCount = acceptedCount + requiredCount;
-  const canContinue = acceptedCount > 0 || requiredCount > 0;
-  const continueLabel = totalSelectedCount > 0
-    ? acceptedCount > 0 && requiredCount > 0
-      ? `Continue with ${acceptedCount} added (${totalSelectedCount} total)`
-      : acceptedCount > 0
-        ? `Continue with ${acceptedCount} added`
-        : `Continue with ${requiredCount} place${requiredCount !== 1 ? 's' : ''}`
-    : 'Continue';
+  const canContinue = selectedCount > 0 || requiredCount > 0;
+
+  const continueLabel = selectedCount > 0
+    ? `Choose placement for ${selectedCount} suggestion${selectedCount !== 1 ? 's' : ''}`
+    : `Continue with ${requiredCount} place${requiredCount !== 1 ? 's' : ''}`;
+
+  const toggleSelected = (suggestion: AISuggestion, index: number) => {
+    const key = getSuggestionKey(suggestion, index);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -82,9 +94,9 @@ export function AISuggestionsList({
               {requiredCount} place{requiredCount !== 1 ? 's' : ''} already included
             </span>
           </div>
-          {pendingCount > 0 && (
+          {suggestions.length > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
-              {pendingCount} recommendation{pendingCount !== 1 ? 's' : ''} remaining
+              Select additional suggestions with checklist controls below
             </p>
           )}
           <div className="mt-2 flex flex-wrap gap-1">
@@ -107,31 +119,32 @@ export function AISuggestionsList({
 
       {/* Suggestions List */}
       <div className="space-y-3">
-        {suggestions.map((suggestion, index) => (
-          <Card 
-            key={index}
+        {suggestions.map((suggestion, index) => {
+          const key = getSuggestionKey(suggestion, index);
+          const isSelected = selectedIds.has(key);
+
+          return (
+          <Card
+            key={key}
             className={cn(
               "p-4 transition-all duration-200",
-              suggestion.accepted && "border-green-500 bg-green-50 dark:bg-green-950/20",
-              suggestion.rejected && "opacity-50 border-muted"
+              isSelected && "border-primary bg-primary/5"
             )}
           >
             <div className="flex items-start gap-3">
-              {/* Confidence Indicator */}
-              <div className="flex flex-col items-center shrink-0">
-                <div className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold",
-                  suggestion.confidence >= 80 && "bg-green-100 text-green-700",
-                  suggestion.confidence >= 60 && suggestion.confidence < 80 && "bg-amber-100 text-amber-700",
-                  suggestion.confidence < 60 && "bg-gray-100 text-gray-600"
-                )}>
-                  {suggestion.confidence}%
-                </div>
-                <Progress 
-                  value={suggestion.confidence} 
-                  className="w-10 h-1 mt-1"
-                />
-              </div>
+              <button
+                type="button"
+                aria-label={`Select ${suggestion.name}`}
+                onClick={() => toggleSelected(suggestion, index)}
+                className={cn(
+                  'mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+                  isSelected
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-muted-foreground/40 text-muted-foreground hover:border-primary/60'
+                )}
+              >
+                {isSelected ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+              </button>
 
               {/* Content */}
               <div className="flex-1 min-w-0">
@@ -142,7 +155,14 @@ export function AISuggestionsList({
                       <p className="text-xs text-muted-foreground">{suggestion.nameLocal}</p>
                     )}
                   </div>
-                  <CategoryBadge category={suggestion.category as PlaceCategory} size="sm" />
+                  <div className="flex items-center gap-1">
+                    <CategoryBadge category={suggestion.category as PlaceCategory} size="sm" />
+                    {isSelected && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Selected
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
@@ -182,58 +202,25 @@ export function AISuggestionsList({
                 {/* Tips */}
                 {suggestion.tips && suggestion.tips.length > 0 && (
                   <p className="text-xs text-amber-600 mt-2">
-                    💡 {suggestion.tips[0]}
+                    Tip: {suggestion.tips[0]}
                   </p>
                 )}
               </div>
             </div>
-
-            {/* Action Buttons */}
-            {!suggestion.accepted && !suggestion.rejected && (
-              <div className="flex gap-2 mt-3 ml-13">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onReject(index)}
-                  className="flex-1 text-muted-foreground hover:text-destructive hover:border-destructive"
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Skip
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => onAccept(index)}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-                >
-                  <Check className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-            )}
-
-            {suggestion.accepted && (
-              <div className="flex items-center gap-2 mt-3 ml-13 text-green-600">
-                <Check className="h-4 w-4" />
-                <span className="text-sm font-medium">Added to trip</span>
-              </div>
-            )}
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {/* Footer Actions */}
       <div className="sticky bottom-0 bg-background pt-4 pb-2 border-t space-y-3">
-        {pendingCount > 0 && (
-          <Button
-            variant="outline"
-            onClick={onAcceptAll}
-            className="w-full"
-          >
-            Accept All Remaining ({pendingCount})
-          </Button>
-        )}
+        <p className="text-xs text-muted-foreground">
+          {selectedCount > 0
+            ? `${selectedCount} suggestion${selectedCount !== 1 ? 's' : ''} selected`
+            : 'Select suggestions, then choose manual or AI-assisted placement'}
+        </p>
         <Button
-          onClick={onContinue}
+          onClick={() => onContinue(selectedSuggestions)}
           className="w-full"
           disabled={!canContinue}
         >

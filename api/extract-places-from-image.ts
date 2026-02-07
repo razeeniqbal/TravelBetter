@@ -125,7 +125,20 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
     const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!responseText) {
       console.error('Unexpected response format:', JSON.stringify(data));
-      return res.status(200).json({ error: 'Failed to extract places from image', places: [] });
+      return res.status(200).json({
+        error: 'Failed to extract places from image',
+        places: [],
+        status: 'failed',
+        processedCount: 0,
+        failedCount: 1,
+        items: [
+          {
+            filename: 'upload-image',
+            status: 'failed',
+            error: 'Failed to extract places from image',
+          },
+        ],
+      });
     }
 
     // Parse the JSON response
@@ -134,7 +147,20 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
       result = parseGeminiJson(responseText);
     } catch (parseError) {
       console.error('Failed to parse AI response:', responseText);
-      return res.status(200).json({ error: 'Failed to parse AI response', places: [] });
+      return res.status(200).json({
+        error: 'Failed to parse AI response',
+        places: [],
+        status: 'failed',
+        processedCount: 0,
+        failedCount: 1,
+        items: [
+          {
+            filename: 'upload-image',
+            status: 'failed',
+            error: 'Failed to parse AI response',
+          },
+        ],
+      });
     }
 
     const places: ExtractedPlace[] = result.places || [];
@@ -144,7 +170,17 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
     return res.status(200).json({
       places,
       summary: result.summary || `Found ${places.length} places`,
-      success: true
+      success: true,
+      status: 'ready',
+      processedCount: 1,
+      failedCount: 0,
+      items: [
+        {
+          filename: 'upload-image',
+          status: 'processed',
+          extractedText: result.summary || `Found ${places.length} places`,
+        },
+      ],
     });
 
   } catch (error) {

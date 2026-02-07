@@ -14,11 +14,23 @@ import { useCreateTripWithPlaces, type PlaceInput } from '@/hooks/useUserTrips';
 import { api } from '@/lib/api';
 import { resolvePlacesForTrip } from '@/lib/resolvePlaces';
 import { PersonalizationChatInterface } from '@/components/personalization/PersonalizationChatInterface';
+import { PromptPreview } from '@/components/personalization/PromptPreview';
 import type { AISuggestion } from '@/components/personalization/AISuggestionsList';
 import type { ParsedDayGroup } from '@/types/itinerary';
+import type { ScreenshotExtractItem, ScreenshotImageInput } from '@/types/itinerary';
 import { filterPlaces } from '@/lib/itinerarySanitizer';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
-type FlowStep = 'hero' | 'personalization' | 'generating';
+type FlowStep = 'hero' | 'ocr-review' | 'personalization' | 'generating';
 
 interface ExtractedPlace {
   name: string;
@@ -147,8 +159,8 @@ function extractFallbackPlaces(description: string): ExtractedPlace[] {
 
     const cleaned = trimmed
       .replace(/[\p{Extended_Pictographic}]/gu, '')
-      .replace(/^[•\-*]+\s*/g, '')
-      .replace(/^day\s*\d+[:.\-]?\s*/i, '')
+      .replace(/^[•*-]+\s*/g, '')
+      .replace(/^day\s*\d+[:.-]?\s*/i, '')
       .replace(/^\d{1,2}[:.]\d{2}\s*(am|pm)?\s*/i, '')
       .replace(/^\d{1,2}\s*(am|pm)\s*/i, '')
       .replace(/^\d+\.\s*/, '')
@@ -203,6 +215,39 @@ function getDisplayDestination(description: string, extractedDestination?: strin
   return basic || summaryLine;
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const slice = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...slice);
+  }
+  return btoa(binary);
+}
+
+async function readFileAsBase64(file: File): Promise<string> {
+  if (typeof file.arrayBuffer === 'function') {
+    const buffer = await file.arrayBuffer();
+    return arrayBufferToBase64(buffer);
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const base64 = result.includes(',') ? result.split(',')[1] : result;
+      if (!base64) {
+        reject(new Error('Unable to read screenshot file'));
+        return;
+      }
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Unable to read screenshot file'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function CreatePage() {
   const navigate = useNavigate();
   const createTripWithPlaces = useCreateTripWithPlaces();
@@ -222,44 +267,157 @@ export default function CreatePage() {
   const [parsedRequest, setParsedRequest] = useState('');
   const [parsedPreview, setParsedPreview] = useState('');
   const [parsedDayGroups, setParsedDayGroups] = useState<ParsedDayGroup[]>([]);
+  const [ocrBatchId, setOcrBatchId] = useState<string | null>(null);
+  const [ocrReviewText, setOcrReviewText] = useState('');
+  const [ocrItems, setOcrItems] = useState<ScreenshotExtractItem[]>([]);
+  const [ocrWarnings, setOcrWarnings] = useState<string[]>([]);
+  const [ocrFailureDialogOpen, setOcrFailureDialogOpen] = useState(false);
+  const [lastScreenshotPayload, setLastScreenshotPayload] = useState<ScreenshotImageInput[]>([]);
+  const [screenshotStageMessage, setScreenshotStageMessage] = useState('');
 
-  const handleScreenshotUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const processScreenshotBatch = async (images: ScreenshotImageInput[]) => {
+    if (images.length === 0) return;
 
     setIsImporting(true);
     setImportType('screenshot');
+    setScreenshotStageMessage('Extracting text from uploaded screenshots...');
+    setOcrWarnings([]);
 
     try {
-      // Convert file to base64
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = reader.result as string;
+      const { data, error } = await api.extractScreenshots({
+        destination: extractBasicDestination(tripDescription) || undefined,
+        images,
+      });
 
-        const { data, error } = await api.extractPlacesFromImage(
-          base64,
-          extractBasicDestination(tripDescription) || undefined
-        );
+      if (error || !data) {
+        throw error || new Error('Failed to extract screenshot text');
+      }
 
-        if (error) throw error;
+      setOcrBatchId(data.batchId);
+      setOcrItems(data.items);
+      setOcrReviewText(data.mergedText || '');
+      setOcrWarnings(data.warnings || []);
 
-        if (data?.places && data.places.length > 0) {
-          setExtractedPlaces(data.places);
-          setStep('personalization');
-          toast.success(`Extracted ${data.places.length} places from screenshot`);
-        } else {
-          toast.info('No places found in the image. Try a different screenshot.');
-        }
-      };
-      reader.readAsDataURL(file);
+      if (data.status === 'failed' || !data.mergedText.trim()) {
+        setOcrFailureDialogOpen(true);
+        return;
+      }
+
+      if (data.status === 'partial') {
+        toast.info('Some screenshots failed to extract. Review text and continue.');
+      } else {
+        toast.success(`Extracted text from ${data.processedCount} screenshot(s)`);
+      }
+
+      setStep('ocr-review');
     } catch (error) {
-      console.error('Error extracting from screenshot:', error);
-      toast.error('Failed to extract places. Please try again.');
+      console.error('Error extracting from screenshot batch:', error);
+      toast.error('Failed to extract screenshot text. Try again or paste text manually.');
+      setOcrFailureDialogOpen(true);
     } finally {
       setIsImporting(false);
+      setScreenshotStageMessage('');
+    }
+  };
+
+  const handleScreenshotUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    setIsImporting(true);
+    setImportType('screenshot');
+    setScreenshotStageMessage('Preparing files for OCR...');
+
+    try {
+      const images: ScreenshotImageInput[] = [];
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue;
+        const base64Data = await readFileAsBase64(file);
+        const mimeType = file.type === 'image/webp' ? 'image/webp' : file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        images.push({
+          filename: file.name || `screenshot-${images.length + 1}.jpg`,
+          mimeType,
+          base64Data,
+        });
+      }
+
+      if (images.length === 0) {
+        toast.error('Please select at least one PNG, JPEG, or WEBP screenshot.');
+        return;
+      }
+
+      setLastScreenshotPayload(images);
+      await processScreenshotBatch(images);
+    } finally {
+      setIsImporting(false);
+      setScreenshotStageMessage('');
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  const handleRetryScreenshotExtraction = async () => {
+    setOcrFailureDialogOpen(false);
+    if (lastScreenshotPayload.length === 0) {
+      toast.info('Pick screenshots again to retry extraction.');
+      return;
+    }
+    await processScreenshotBatch(lastScreenshotPayload);
+  };
+
+  const handleManualTextFallback = () => {
+    setOcrFailureDialogOpen(false);
+    setStep('personalization');
+    toast.info('You can paste itinerary text and continue manually.');
+  };
+
+  const handleSubmitOcrReview = async () => {
+    if (!ocrBatchId || !ocrReviewText.trim()) {
+      toast.error('Review text is empty. Add text before continuing.');
+      return;
+    }
+
+    setIsImporting(true);
+    setImportType('screenshot');
+    setScreenshotStageMessage('Converting extracted text into itinerary places...');
+
+    try {
+      const { data, error } = await api.submitScreenshotText({
+        batchId: ocrBatchId,
+        text: ocrReviewText,
+        destination: getDisplayDestination(tripDescription, extractedDestination) || undefined,
+        durationDays: extractDurationDays(tripDescription) || undefined,
+      });
+
+      if (error || !data) {
+        throw error || new Error('Failed to submit extracted text');
+      }
+
+      const parsedDays = data.days || [];
+      const dayPlaceNames = parsedDays.flatMap(day => day.places.map(place => place.name));
+      const uniquePlaces = [...new Set(dayPlaceNames.map(name => name.trim()).filter(Boolean))];
+
+      setTripDescription(ocrReviewText);
+      setParsedRequest(data.cleanedRequest || ocrReviewText);
+      setParsedPreview(data.previewText || data.cleanedRequest || ocrReviewText);
+      setParsedDayGroups(parsedDays);
+      setExtractedDestination(data.destination || extractBasicDestination(ocrReviewText));
+      setExtractedPlaces(uniquePlaces.map(name => ({ name, category: 'attraction' })));
+      setOcrWarnings(data.warnings || []);
+
+      if ((data.warnings || []).length > 0) {
+        toast.info('Review notes detected. You can adjust text in personalization if needed.');
+      }
+
+      setStep('personalization');
+    } catch (error) {
+      console.error('Error submitting screenshot OCR text:', error);
+      toast.error('Unable to continue from extracted text. Retry or edit text manually.');
+      setOcrFailureDialogOpen(true);
+    } finally {
+      setIsImporting(false);
+      setScreenshotStageMessage('');
     }
   };
 
@@ -370,6 +528,8 @@ export default function CreatePage() {
       description: p.description,
       source: 'ai' as const,
       confidence: p.confidence,
+      dayIndex: p.confirmedDayNumber,
+      dayLabel: p.confirmedDayNumber ? `Day ${p.confirmedDayNumber}` : undefined,
       coordinates:
         typeof p.latitude === 'number' && typeof p.longitude === 'number'
           ? { lat: p.latitude, lng: p.longitude }
@@ -555,6 +715,7 @@ export default function CreatePage() {
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={handleScreenshotUpload}
                 className="hidden"
               />
@@ -597,6 +758,31 @@ export default function CreatePage() {
                 </Button>
               </div>
 
+              {importType === 'screenshot' && screenshotStageMessage && (
+                <p className="mt-3 text-sm text-muted-foreground animate-pulse">
+                  {screenshotStageMessage}
+                </p>
+              )}
+
+              {ocrItems.length > 0 && (
+                <div className="mt-4 rounded-xl border border-border bg-card p-3">
+                  <p className="text-sm font-medium text-foreground">Screenshot extraction status</p>
+                  <div className="mt-2 space-y-1">
+                    {ocrItems.map(item => (
+                      <div key={item.filename} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{item.filename}</span>
+                        <span className={item.status === 'processed' ? 'text-green-600' : 'text-amber-600'}>
+                          {item.status === 'processed' ? 'Processed' : 'Failed'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {ocrWarnings.length > 0 && (
+                    <p className="mt-2 text-xs text-amber-700">{ocrWarnings.join(' • ')}</p>
+                  )}
+                </div>
+              )}
+
               {/* Generate CTA */}
               <Button 
                 onClick={handleImportAndContinue}
@@ -636,6 +822,22 @@ export default function CreatePage() {
         />
       )}
 
+      {step === 'ocr-review' && (
+        <div className="px-4 py-6">
+          <PromptPreview
+            prompt={tripDescription}
+            editableText={ocrReviewText}
+            editableLabel="Extracted screenshot text"
+            hideEditAction
+            importedPlaces={[]}
+            onEditableTextChange={setOcrReviewText}
+            onEdit={() => setStep('hero')}
+            onSubmit={handleSubmitOcrReview}
+            isLoading={isImporting}
+          />
+        </div>
+      )}
+
       {step === 'generating' && (
         <div className="flex min-h-screen flex-col items-center justify-center px-4">
           <div className="relative">
@@ -652,6 +854,21 @@ export default function CreatePage() {
       )}
 
       {step === 'hero' && <BottomNav />}
+
+      <AlertDialog open={ocrFailureDialogOpen} onOpenChange={setOcrFailureDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Could not extract enough text</AlertDialogTitle>
+            <AlertDialogDescription>
+              Retry OCR with the same screenshots or continue by entering text manually.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleManualTextFallback}>Manual text</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRetryScreenshotExtraction}>Retry extraction</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* URL Import Dialog */}
       <Dialog open={urlDialogOpen} onOpenChange={setUrlDialogOpen}>

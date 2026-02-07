@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Sparkles, Edit2, MapPin } from 'lucide-react';
 import type { ParsedDayGroup } from '@/types/itinerary';
+import { Textarea } from '@/components/ui/textarea';
 
 interface PromptPreviewProps {
   prompt: string;
@@ -11,6 +12,10 @@ interface PromptPreviewProps {
   onEdit: () => void;
   onSubmit: () => void;
   isLoading?: boolean;
+  editableText?: string;
+  onEditableTextChange?: (value: string) => void;
+  editableLabel?: string;
+  hideEditAction?: boolean;
 }
 
 export function PromptPreview({
@@ -21,8 +26,12 @@ export function PromptPreview({
   onEdit,
   onSubmit,
   isLoading = false,
+  editableText,
+  onEditableTextChange,
+  editableLabel = 'Extracted text',
+  hideEditAction = false,
 }: PromptPreviewProps) {
-  const displayText = previewText?.trim() || prompt;
+  const displayText = editableText !== undefined ? editableText : (previewText?.trim() || prompt);
   const hasDayGroups = Boolean(dayGroups && dayGroups.length > 0);
 
   return (
@@ -41,9 +50,20 @@ export function PromptPreview({
             <span className="text-lg">✨</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-              {displayText}
-            </p>
+            {editableText !== undefined ? (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">{editableLabel}</p>
+                <Textarea
+                  value={displayText}
+                  onChange={(event) => onEditableTextChange?.(event.target.value)}
+                  className="min-h-[180px] resize-y bg-background"
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {displayText}
+              </p>
+            )}
           </div>
         </div>
       </Card>
@@ -100,15 +120,17 @@ export function PromptPreview({
 
       {/* Action Buttons */}
       <div className="flex gap-3 pt-2">
-        <Button
-          variant="outline"
-          onClick={onEdit}
-          className="flex-1 gap-2"
-          disabled={isLoading}
-        >
-          <Edit2 className="h-4 w-4" />
-          Edit
-        </Button>
+        {!hideEditAction && (
+          <Button
+            variant="outline"
+            onClick={onEdit}
+            className="flex-1 gap-2"
+            disabled={isLoading}
+          >
+            <Edit2 className="h-4 w-4" />
+            Edit
+          </Button>
+        )}
         <Button
           onClick={onSubmit}
           className="flex-1 gap-2"

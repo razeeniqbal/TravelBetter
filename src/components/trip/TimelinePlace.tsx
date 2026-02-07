@@ -1,5 +1,5 @@
 import { Place } from '@/types/trip';
-import { Star, Info } from 'lucide-react';
+import { Star, Info, Clock, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TimelinePlaceProps {
@@ -8,9 +8,29 @@ interface TimelinePlaceProps {
   time?: string;
   isLast?: boolean;
   onClick?: () => void;
+  onViewMap?: (place: Place) => void;
+  onTimingChange?: (placeId: string, value: { arrivalTime?: string; stayDurationMinutes: number }) => void;
+  isTimingEditable?: boolean;
+  isHighlighted?: boolean;
 }
 
-export function TimelinePlace({ place, index, time, isLast, onClick }: TimelinePlaceProps) {
+export function TimelinePlace({
+  place,
+  index,
+  time,
+  isLast,
+  onClick,
+  onViewMap,
+  onTimingChange,
+  isTimingEditable = false,
+  isHighlighted = false,
+}: TimelinePlaceProps) {
+  const stayDuration = place.stayDurationMinutes || place.duration || 60;
+  const arrival = place.arrivalTime || time || 'Anytime';
+  const commuteMinutes = place.commuteDurationMinutes || place.walkingTimeFromPrevious;
+  const commuteMeters = place.commuteDistanceMeters;
+  const tags = (place.tags || []).filter(Boolean);
+
   return (
     <div
       className="relative flex gap-4"
@@ -44,6 +64,7 @@ export function TimelinePlace({ place, index, time, isLast, onClick }: TimelineP
       <div className={cn(
         'mb-4 flex flex-1 gap-3 rounded-xl border bg-card p-3 transition-all',
         'hover:shadow-travel cursor-pointer',
+        isHighlighted && 'ring-2 ring-primary',
         place.source === 'ai' && 'border-violet-200 dark:border-violet-800'
       )}>
         {/* Thumbnail */}
@@ -64,7 +85,7 @@ export function TimelinePlace({ place, index, time, isLast, onClick }: TimelineP
               <h4 className="font-semibold text-foreground line-clamp-1">{place.name}</h4>
               <p className="text-xs text-muted-foreground">
                 {place.category.charAt(0).toUpperCase() + place.category.slice(1)}
-                {time && <span className="ml-2">• {time}</span>}
+                <span className="ml-2">• {place.source === 'ai' ? 'AI' : 'You'}</span>
               </p>
               {place.source === 'user' && !place.coordinates && (
                 <p className="mt-1 text-[11px] font-medium text-amber-700">
@@ -76,14 +97,77 @@ export function TimelinePlace({ place, index, time, isLast, onClick }: TimelineP
               <Info className="h-4 w-4" />
             </button>
           </div>
-          
-          {place.rating && (
-            <div className="mt-1 flex items-center gap-1">
-              <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-              <span className="text-xs font-medium">{place.rating}</span>
-              <span className="text-xs text-muted-foreground">(128)</span>
-            </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Arrival: {arrival}
+            </span>
+            {place.rating ? (
+              <span className="inline-flex items-center gap-1">
+                <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                {place.rating}
+              </span>
+            ) : (
+              <span>Rating unavailable</span>
+            )}
+          </div>
+
+          <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+            {tags.length > 0 ? (
+              tags.slice(0, 3).map(tag => (
+                <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                  #{tag}
+                </span>
+              ))
+            ) : (
+              <span className="text-muted-foreground">No tags</span>
+            )}
+          </div>
+
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Stay:</span>
+            {isTimingEditable ? (
+              <input
+                type="number"
+                min={5}
+                max={720}
+                value={stayDuration}
+                className="h-7 w-20 rounded-md border border-border bg-background px-2 text-foreground"
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => {
+                  const value = Number(event.target.value) || stayDuration;
+                  onTimingChange?.(place.id, {
+                    arrivalTime: place.arrivalTime || undefined,
+                    stayDurationMinutes: value,
+                  });
+                }}
+              />
+            ) : (
+              <span>{stayDuration} min</span>
+            )}
+          </div>
+
+          {(commuteMinutes || commuteMeters) && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Commute from previous: {commuteMeters ? `${(commuteMeters / 1000).toFixed(1)} km` : 'Distance unavailable'}
+              {commuteMinutes ? ` • ${commuteMinutes} min` : ''}
+            </p>
           )}
+
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+              onClick={(event) => {
+                event.stopPropagation();
+                onViewMap?.(place);
+              }}
+            >
+              <MapPin className="h-3 w-3" />
+              View on map
+            </button>
+          </div>
         </div>
       </div>
     </div>

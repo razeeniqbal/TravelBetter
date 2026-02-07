@@ -1,12 +1,52 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { vi } from 'vitest';
+import { beforeEach, vi } from 'vitest';
 import CreatePage from './CreatePage';
 import { durationCommaSample, multiDaySample } from '@/test/fixtures/itinerarySamples';
-import { mockFetchOnce } from '@/test/utils/mockFetch';
+import { mockFetchOnce, resetFetchMock } from '@/test/utils/mockFetch';
+
+const createTripMutateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/hooks/useUserTrips', () => ({
-  useCreateTripWithPlaces: () => ({ mutate: vi.fn() }),
+  useCreateTripWithPlaces: () => ({ mutate: createTripMutateMock }),
+}));
+
+vi.mock('@/lib/resolvePlaces', () => ({
+  resolvePlacesForTrip: vi.fn(async (places) => places),
+}));
+
+vi.mock('@/components/trip/AddToItineraryDialog', () => ({
+  AddToItineraryDialog: ({
+    open,
+    placementAssignments,
+    onConfirmPlacements,
+  }: {
+    open: boolean;
+    placementAssignments?: Array<{ suggestionId: string; proposedDayNumber: number }>;
+    onConfirmPlacements?: (placements: Array<{ suggestionId: string; confirmedDayNumber: number }>) => void;
+  }) => {
+    if (!open) return null;
+
+    return (
+      <div>
+        <p>Confirm Day Assignments</p>
+        <button
+          type="button"
+          onClick={() => {
+            onConfirmPlacements?.(
+              (placementAssignments || []).map((assignment) => ({
+                suggestionId: assignment.suggestionId,
+                confirmedDayNumber: assignment.proposedDayNumber,
+              }))
+            );
+          }}
+        >
+          Confirm assignments
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('sonner', () => ({
@@ -16,6 +56,23 @@ vi.mock('sonner', () => ({
     info: vi.fn(),
   },
 }));
+
+beforeEach(() => {
+  createTripMutateMock.mockReset();
+  resetFetchMock();
+});
+
+function renderCreatePage() {
+  const queryClient = new QueryClient();
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <CreatePage />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
 
 describe('CreatePage itinerary preview', () => {
   it('shows day-grouped preview after text import', async () => {
@@ -33,11 +90,7 @@ describe('CreatePage itinerary preview', () => {
       },
     });
 
-    render(
-      <MemoryRouter>
-        <CreatePage />
-      </MemoryRouter>
-    );
+    renderCreatePage();
 
     fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
       target: { value: multiDaySample },
@@ -83,11 +136,7 @@ describe('CreatePage itinerary preview', () => {
       },
     });
 
-    render(
-      <MemoryRouter>
-        <CreatePage />
-      </MemoryRouter>
-    );
+    renderCreatePage();
 
     fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
       target: { value: 'Hatyai weekend itinerary' },
@@ -117,11 +166,7 @@ describe('CreatePage itinerary preview', () => {
       },
     });
 
-    render(
-      <MemoryRouter>
-        <CreatePage />
-      </MemoryRouter>
-    );
+    renderCreatePage();
 
     fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
       target: { value: durationCommaSample },
@@ -162,11 +207,7 @@ describe('CreatePage itinerary preview', () => {
       },
     });
 
-    render(
-      <MemoryRouter>
-        <CreatePage />
-      </MemoryRouter>
-    );
+    renderCreatePage();
 
     fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
       target: { value: '2 days in klcc, trx' },
@@ -178,5 +219,226 @@ describe('CreatePage itinerary preview', () => {
     fireEvent.click(previewButton);
 
     expect(await screen.findByText('Kuala Lumpur City Centre (KLCC)')).toBeInTheDocument();
+  });
+
+  it('confirms manual and ai placement assignments before trip generation', async () => {
+    mockFetchOnce({
+      json: {
+        suggestions: [
+          {
+            suggestionId: 'sug-1',
+            name: 'Senso-ji Temple',
+            category: 'culture',
+            description: 'Historic temple district',
+            confidence: 91,
+            reason: 'Matches first-time cultural highlights',
+          },
+          {
+            suggestionId: 'sug-2',
+            name: 'Shibuya Crossing',
+            category: 'night',
+            description: 'Iconic city crossing',
+            confidence: 82,
+            reason: 'Great evening city atmosphere',
+          },
+        ],
+        resolvedDestination: 'Tokyo',
+        success: true,
+      },
+    });
+
+    mockFetchOnce({
+      json: {
+        mode: 'manual',
+        placements: [
+          {
+            suggestionId: 'sug-1',
+            displayName: 'Senso-ji Temple',
+            proposedDayNumber: 2,
+            confidence: 'high',
+          },
+        ],
+      },
+    });
+
+    mockFetchOnce({
+      json: {
+        mode: 'ai',
+        placements: [
+          {
+            suggestionId: 'sug-2',
+            displayName: 'Shibuya Crossing',
+            proposedDayNumber: 1,
+            confidence: 'medium',
+          },
+        ],
+      },
+    });
+
+    mockFetchOnce({
+      json: {
+        tripId: 'trip-preview',
+        addedCount: 2,
+        affectedDays: [1, 2],
+      },
+    });
+
+    renderCreatePage();
+
+    fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
+      target: { value: 'Tokyo weekend food and culture trip' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /generate itinerary/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /preview/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /get ideas/i }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /select senso-ji temple/i }));
+    fireEvent.click(screen.getByRole('button', { name: /select shibuya crossing/i }));
+    fireEvent.click(screen.getByRole('button', { name: /choose placement for 2 suggestions/i }));
+
+    const manualButtons = await screen.findAllByRole('button', { name: /manual day/i });
+    const aiButtons = screen.getAllByRole('button', { name: /ai-assisted/i });
+    fireEvent.click(manualButtons[0]);
+    fireEvent.click(aiButtons[1]);
+
+    const manualDayInput = screen.getByRole('spinbutton');
+    fireEvent.change(manualDayInput, { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /confirm assignments/i }));
+
+    await waitFor(() => {
+      expect(createTripMutateMock).toHaveBeenCalled();
+    });
+
+    const createPayload = createTripMutateMock.mock.calls[0][0] as {
+      places: Array<{ name: string; dayIndex?: number; source: string }>;
+    };
+
+    expect(createPayload.places).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'Senso-ji Temple',
+        dayIndex: 2,
+        source: 'ai',
+      }),
+      expect.objectContaining({
+        name: 'Shibuya Crossing',
+        dayIndex: 1,
+        source: 'ai',
+      }),
+    ]));
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const commitCall = fetchMock.mock.calls.find(call => String(call[0]).includes('suggestion-placement-commit'));
+    expect(commitCall).toBeDefined();
+
+    const commitPayload = JSON.parse(commitCall?.[1]?.body as string) as {
+      placements: Array<{ suggestionId: string; confirmedDayNumber: number }>;
+    };
+    expect(commitPayload.placements).toEqual(expect.arrayContaining([
+      { suggestionId: 'sug-1', confirmedDayNumber: 2 },
+      { suggestionId: 'sug-2', confirmedDayNumber: 1 },
+    ]));
+  });
+
+  it('supports multi-image OCR review edit and submit flow', async () => {
+    mockFetchOnce({
+      json: {
+        batchId: 'ocr-batch-1',
+        status: 'ready',
+        processedCount: 2,
+        failedCount: 0,
+        items: [
+          { filename: 'shot-1.png', status: 'processed', extractedText: 'Day 1\nSenso-ji Temple' },
+          { filename: 'shot-2.png', status: 'processed', extractedText: 'Day 2\nShibuya Crossing' },
+        ],
+        mergedText: 'Day 1\nSenso-ji Temple\n\nDay 2\nShibuya Crossing',
+        warnings: [],
+      },
+    });
+
+    mockFetchOnce({
+      json: {
+        cleanedRequest: "I'm planning a trip to Tokyo.\n\nPlaces from my itinerary:\nDay 1\n- Senso-ji Temple\nDay 2\n- Shibuya Crossing",
+        previewText: "I'm planning a trip to Tokyo.\n\nPlaces from my itinerary:\nDay 1\n- Senso-ji Temple\nDay 2\n- Shibuya Crossing",
+        destination: 'Tokyo',
+        days: [
+          { label: 'Day 1', places: [{ name: 'Senso-ji Temple', source: 'user' }] },
+          { label: 'Day 2', places: [{ name: 'Shibuya Crossing', source: 'user' }] },
+        ],
+        warnings: ['DUPLICATE_PLACE_NAMES'],
+        success: true,
+      },
+    });
+
+    renderCreatePage();
+
+    fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
+      target: { value: 'Tokyo screenshot import' },
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeTruthy();
+
+    const fileOne = new File(['fake-one'], 'shot-1.png', { type: 'image/png' });
+    const fileTwo = new File(['fake-two'], 'shot-2.png', { type: 'image/png' });
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [fileOne, fileTwo],
+      },
+    });
+
+    const extractedTextArea = await screen.findByDisplayValue(/senso-ji temple/i);
+    fireEvent.change(extractedTextArea, {
+      target: { value: 'Day 1\nSenso-ji Temple\nDay 2\nShibuya Crossing\nMaybe TeamLab?' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /get ideas/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /preview/i })).toBeInTheDocument();
+    });
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const submitCall = fetchMock.mock.calls.find(call => String(call[0]).includes('screenshot-submit'));
+    expect(submitCall).toBeDefined();
+
+    const submitPayload = JSON.parse(submitCall?.[1]?.body as string) as { text: string; batchId: string };
+    expect(submitPayload.batchId).toBe('ocr-batch-1');
+    expect(submitPayload.text).toContain('Maybe TeamLab?');
+  });
+
+  it('shows OCR recovery dialog and supports manual text fallback', async () => {
+    mockFetchOnce({
+      json: {
+        batchId: 'ocr-batch-failed',
+        status: 'failed',
+        processedCount: 0,
+        failedCount: 1,
+        items: [{ filename: 'shot-1.png', status: 'failed', error: 'No text detected' }],
+        mergedText: '',
+        warnings: ['1 image(s) failed OCR extraction'],
+      },
+    });
+
+    renderCreatePage();
+
+    fireEvent.change(screen.getByPlaceholderText(/tell me more about your trip/i), {
+      target: { value: 'Tokyo screenshot import for manual fallback test' },
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File(['fake-one'], 'shot-1.png', { type: 'image/png' })],
+      },
+    });
+
+    expect(await screen.findByText(/could not extract enough text/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /manual text/i }));
+
+    expect(await screen.findByText(/travelbetter ai/i)).toBeInTheDocument();
   });
 });

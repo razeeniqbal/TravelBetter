@@ -17,11 +17,17 @@ export interface Place {
   cost?: string;
   rating?: number;
   address?: string;
+  tags?: string[];
   coordinates?: {
     lat: number;
     lng: number;
   };
   walkingTimeFromPrevious?: number; // in minutes
+  commuteDurationMinutes?: number;
+  commuteDistanceMeters?: number;
+  arrivalTime?: string;
+  stayDurationMinutes?: number;
+  mapUrl?: string;
   tips?: string[];
   openingHours?: string;
   isAnchor?: boolean;
@@ -81,7 +87,15 @@ export type ImportSource = 'screenshot' | 'text' | 'youtube' | 'instagram' | 're
 
 export interface ImportSession {
   source: ImportSource;
-  status: 'uploading' | 'analyzing' | 'extracting' | 'ready' | 'error';
+  status:
+    | 'uploading'
+    | 'analyzing'
+    | 'extracting'
+    | 'ocr-processing'
+    | 'merging-text'
+    | 'ready'
+    | 'partial'
+    | 'error';
   progress: number;
   extractedPlaces?: Place[];
   rawContent?: string;

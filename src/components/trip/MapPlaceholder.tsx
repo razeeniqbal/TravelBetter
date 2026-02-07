@@ -13,9 +13,25 @@ interface MapPlaceholderProps {
   destination?: string;
   placesCount?: number;
   places?: Place[];
+  onMarkerClick?: (place: Place) => void;
   className?: string;
   showOverlays?: boolean;
   controlsPosition?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+}
+
+const ROUTE_CACHE_LIMIT = 40;
+const routeGeometryCache = new globalThis.Map<string, [number, number][]>();
+
+function setCachedRoute(routeKey: string, coordinates: [number, number][]) {
+  if (!routeKey || coordinates.length < 2) return;
+
+  routeGeometryCache.set(routeKey, coordinates);
+  if (routeGeometryCache.size <= ROUTE_CACHE_LIMIT) return;
+
+  const oldestKey = routeGeometryCache.keys().next().value;
+  if (oldestKey) {
+    routeGeometryCache.delete(oldestKey);
+  }
 }
 
 function MapAutoFit({
@@ -87,6 +103,7 @@ export function MapPlaceholder({
   destination = 'Kyoto',
   placesCount = 4,
   places = [],
+  onMarkerClick,
   className,
   showOverlays = true,
   controlsPosition = 'top-right',
@@ -119,20 +136,30 @@ export function MapPlaceholder({
 
     const resolveMissingCoords = async () => {
       const updates: Record<string, { lat: number; lng: number }> = {};
-      for (const place of missingPlaces) {
-        const coords = await geocodePlaceCoordinates(place.name, destination);
-        if (!coords) continue;
-        updates[place.id] = coords;
+      const geocoded = await Promise.all(
+        missingPlaces.map(async (place) => {
+          const coords = await geocodePlaceCoordinates(place.name, destination);
+          return coords ? { place, coords } : null;
+        })
+      );
 
-        if (!AUTH_DISABLED) {
-          const { error } = await supabase
-            .from('places')
-            .update({ latitude: coords.lat, longitude: coords.lng })
-            .eq('id', place.id);
-          if (error) {
-            console.error('Failed to update place coordinates:', error);
-          }
-        }
+      for (const result of geocoded) {
+        if (!result) continue;
+        updates[result.place.id] = result.coords;
+      }
+
+      if (!AUTH_DISABLED && Object.keys(updates).length > 0) {
+        await Promise.all(
+          Object.entries(updates).map(async ([placeId, coords]) => {
+            const { error } = await supabase
+              .from('places')
+              .update({ latitude: coords.lat, longitude: coords.lng })
+              .eq('id', placeId);
+            if (error) {
+              console.error('Failed to update place coordinates:', error);
+            }
+          })
+        );
       }
 
       if (!isActive || Object.keys(updates).length === 0) return;
@@ -151,6 +178,12 @@ export function MapPlaceholder({
       return;
     }
 
+    const cachedRoute = routeGeometryCache.get(routeKey);
+    if (cachedRoute && cachedRoute.length > 1) {
+      setRouteCoordinates(cachedRoute);
+      return;
+    }
+
     const controller = new AbortController();
     const fetchRoute = async () => {
       setRouteCoordinates([]);
@@ -165,7 +198,9 @@ export function MapPlaceholder({
         const data = await response.json();
         const coords = data?.routes?.[0]?.geometry?.coordinates;
         if (Array.isArray(coords) && coords.length > 1) {
-          setRouteCoordinates(coords as [number, number][]);
+          const routeCoords = coords as [number, number][];
+          setRouteCoordinates(routeCoords);
+          setCachedRoute(routeKey, routeCoords);
         }
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
@@ -208,6 +243,7 @@ export function MapPlaceholder({
             key={place.id}
             longitude={coords.lng}
             latitude={coords.lat}
+            onClick={() => onMarkerClick?.(place)}
           >
             <MarkerContent className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[11px] font-semibold text-slate-700 shadow-md ring-1 ring-slate-200">
               {index + 1}

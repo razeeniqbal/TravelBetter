@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react';
-import { Place, DayItinerary } from '@/types/trip';
+import { useState, useCallback, useEffect } from 'react';
+import { DayItinerary } from '@/types/trip';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { AUTH_DISABLED } from '@/lib/flags';
 import { getGuestTripById, updateGuestTrip } from '@/lib/guestTrips';
+import { getTripDetailQueryKey } from '@/hooks/useTripDetail';
 
 interface UseTripEditProps {
   tripId: string;
@@ -12,12 +13,27 @@ interface UseTripEditProps {
   isOwner: boolean;
 }
 
+function toSnapshot(itinerary: DayItinerary[], anchorPlaceId: string | null): string {
+  return JSON.stringify({ itinerary, anchorPlaceId });
+}
+
 export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [itinerary, setItinerary] = useState<DayItinerary[]>(initialItinerary);
   const [anchorPlaceId, setAnchorPlaceId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [baselineSnapshot, setBaselineSnapshot] = useState(() => toSnapshot(initialItinerary, null));
   const queryClient = useQueryClient();
+
+  const hasUnsavedChanges = toSnapshot(itinerary, anchorPlaceId) !== baselineSnapshot;
+
+  useEffect(() => {
+    if (isEditMode) return;
+
+    setItinerary(initialItinerary);
+    setAnchorPlaceId(null);
+    setBaselineSnapshot(toSnapshot(initialItinerary, null));
+  }, [initialItinerary, isEditMode]);
 
   // Detect potential anchor from accommodations
   const detectAnchor = useCallback(() => {
@@ -39,10 +55,22 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
       toast.info('You can only edit your own trips');
       return;
     }
+
+    if (isEditMode && hasUnsavedChanges) {
+      toast.info('Save or discard your edits before leaving edit mode');
+      return;
+    }
+
+    if (!isEditMode) {
+      setBaselineSnapshot(toSnapshot(itinerary, anchorPlaceId));
+    }
+
     setIsEditMode(prev => !prev);
-  }, [isOwner]);
+  }, [anchorPlaceId, hasUnsavedChanges, isEditMode, isOwner, itinerary]);
 
   const reorderPlaces = useCallback((dayIndex: number, sourceIdx: number, destinationIdx: number) => {
+    if (sourceIdx === destinationIdx) return;
+
     setItinerary(prev => {
       const newItinerary = [...prev];
       const dayItinerary = { ...newItinerary[dayIndex] };
@@ -64,6 +92,8 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
     sourceIdx: number, 
     destIdx: number
   ) => {
+    if (sourceDayIndex === destDayIndex && sourceIdx === destIdx) return;
+
     setItinerary(prev => {
       const newItinerary = [...prev];
       const sourceDay = { ...newItinerary[sourceDayIndex] };
@@ -111,8 +141,9 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
         const trip = getGuestTripById(tripId);
         if (!trip) throw new Error('Trip not found');
         updateGuestTrip({ ...trip, itinerary });
-        queryClient.invalidateQueries({ queryKey: ['trip-detail', tripId] });
+        queryClient.invalidateQueries({ queryKey: getTripDetailQueryKey(tripId) });
         toast.success('Changes saved successfully!');
+        setBaselineSnapshot(toSnapshot(itinerary, anchorPlaceId));
         setIsEditMode(false);
         return;
       }
@@ -155,9 +186,10 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
       }
 
       // Invalidate query to refresh data
-      queryClient.invalidateQueries({ queryKey: ['trip-detail', tripId] });
+      queryClient.invalidateQueries({ queryKey: getTripDetailQueryKey(tripId) });
       
       toast.success('Changes saved successfully!');
+      setBaselineSnapshot(toSnapshot(itinerary, anchorPlaceId));
       setIsEditMode(false);
     } catch (error) {
       console.error('Error saving changes:', error);
@@ -165,15 +197,18 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
     } finally {
       setIsSaving(false);
     }
-  }, [tripId, itinerary, queryClient]);
+  }, [anchorPlaceId, itinerary, queryClient, tripId]);
 
   const discardChanges = useCallback(() => {
     setItinerary(initialItinerary);
+    setAnchorPlaceId(null);
+    setBaselineSnapshot(toSnapshot(initialItinerary, null));
     setIsEditMode(false);
   }, [initialItinerary]);
 
   return {
     isEditMode,
+    hasUnsavedChanges,
     toggleEditMode,
     itinerary,
     reorderPlaces,

@@ -63,3 +63,89 @@ export const hatyaiSentenceSample = `trip to hatyai, i want to go neo grand haty
 export const hatyaiOneDaySample = `1 day to go neo grand hatyai, krua pa yad, thefellows.hdy café, mookata paeyim, greeway night market`;
 
 export const hatyaiListSample = `neo grand hatyai, krua pa yad, thefellows.hdy café, mookata paeyim, greeway night market`;
+
+export const editableDayGroupsSample = [
+  {
+    label: 'Day 1',
+    date: null,
+    places: [
+      { name: 'Petronas Twin Towers', source: 'user' as const },
+      { name: 'Merdeka Square', source: 'ai' as const },
+    ],
+  },
+  {
+    label: 'Day 2',
+    date: null,
+    places: [
+      { name: 'The Exchange TRX', source: 'user' as const },
+    ],
+  },
+];
+
+export const itineraryDraftSaveSample = {
+  editSession: {
+    draftId: 'draft-001',
+    baselineHash: 'baseline-hash-001',
+  },
+  days: [
+    {
+      dayNumber: 1,
+      anchorStopId: 'stop-1',
+      stops: [
+        {
+          stopId: 'stop-1',
+          position: 0,
+          arrivalTime: '09:00',
+          stayDurationMinutes: 120,
+        },
+        {
+          stopId: 'stop-2',
+          position: 1,
+          arrivalTime: '12:00',
+          stayDurationMinutes: 90,
+        },
+      ],
+    },
+    {
+      dayNumber: 2,
+      stops: [
+        {
+          stopId: 'stop-3',
+          position: 0,
+          arrivalTime: '10:00',
+          stayDurationMinutes: 60,
+        },
+      ],
+    },
+  ],
+};
+
+export const suggestionPlacementPreviewSample = {
+  mode: 'ai' as const,
+  selectedSuggestions: [
+    {
+      suggestionId: 'sug-1',
+      displayName: 'KLCC Park',
+    },
+    {
+      suggestionId: 'sug-2',
+      displayName: 'Bukit Bintang',
+    },
+  ],
+};
+
+export const screenshotBatchSample = {
+  destination: 'Kuala Lumpur',
+  images: [
+    {
+      filename: 'itinerary-1.png',
+      mimeType: 'image/png' as const,
+      base64Data: 'ZmFrZS1pbWFnZS1kYXRhLTE=',
+    },
+    {
+      filename: 'itinerary-2.png',
+      mimeType: 'image/png' as const,
+      base64Data: 'ZmFrZS1pbWFnZS1kYXRhLTI=',
+    },
+  ],
+};

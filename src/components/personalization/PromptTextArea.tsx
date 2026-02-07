@@ -11,6 +11,7 @@ interface PromptTextAreaProps {
   charCount: number;
   minChars?: number;
   maxChars?: number;
+  importStatusText?: string;
 }
 
 export function PromptTextArea({
@@ -22,6 +23,7 @@ export function PromptTextArea({
   charCount,
   minChars = 20,
   maxChars = 5000,
+  importStatusText,
 }: PromptTextAreaProps) {
   const isUnderMin = charCount < minChars;
   const isNearMax = charCount > maxChars * 0.9;
@@ -88,6 +90,10 @@ export function PromptTextArea({
           This is the exact prompt sent to the AI. Review it in Preview, then adjust if needed.
         </p>
       </div>
+
+      {importStatusText && (
+        <p className="text-xs text-muted-foreground">{importStatusText}</p>
+      )}
 
       {/* Warning states */}
       {isUnderMin && (

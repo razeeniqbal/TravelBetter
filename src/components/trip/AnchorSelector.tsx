@@ -104,7 +104,7 @@ export function AnchorSelector({
                     )}
                   >
                     <div className={cn(
-                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-11 sm:w-11',
                       isAccom 
                         ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30' 
                         : 'bg-muted text-muted-foreground'

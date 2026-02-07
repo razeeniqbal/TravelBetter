@@ -25,11 +25,23 @@ import { Place } from '@/types/trip';
 import { MapPin, Calendar, Plus, ChevronRight, Loader2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+export interface PlacementAssignment {
+  suggestionId: string;
+  displayName: string;
+  mode: 'manual' | 'ai';
+  proposedDayNumber: number;
+  confidence?: 'high' | 'medium' | 'low';
+}
+
 interface AddToItineraryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  places: Place[];
-  destination: string;
+  places?: Place[];
+  destination?: string;
+  placementAssignments?: PlacementAssignment[];
+  totalDays?: number;
+  isConfirmingPlacements?: boolean;
+  onConfirmPlacements?: (placements: Array<{ suggestionId: string; confirmedDayNumber: number }>) => void;
 }
 
 type Step = 'select-places' | 'select-trip' | 'create-trip' | 'select-day' | 'success';
@@ -37,8 +49,12 @@ type Step = 'select-places' | 'select-trip' | 'create-trip' | 'select-day' | 'su
 export function AddToItineraryDialog({ 
   open, 
   onOpenChange, 
-  places,
-  destination 
+  places = [],
+  destination = '',
+  placementAssignments,
+  totalDays = 1,
+  isConfirmingPlacements = false,
+  onConfirmPlacements,
 }: AddToItineraryDialogProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -53,6 +69,9 @@ export function AddToItineraryDialog({
   const [newTripDestination, setNewTripDestination] = useState('');
   const [newTripCountry, setNewTripCountry] = useState('');
   const [newTripDuration, setNewTripDuration] = useState(3);
+  const [confirmedPlacementDays, setConfirmedPlacementDays] = useState<Record<string, number>>({});
+
+  const isPlacementConfirmationMode = Boolean(placementAssignments?.length && onConfirmPlacements);
   
   const { data: userTrips, isLoading: tripsLoading } = useUserTrips();
   const { data: tripDays, isLoading: daysLoading } = useTripDays(selectedTripId);
@@ -74,6 +93,17 @@ export function AddToItineraryDialog({
       setNewTripDuration(3);
     }
   }, [open, destination]);
+
+  useEffect(() => {
+    if (!open || !isPlacementConfirmationMode || !placementAssignments) return;
+
+    const initialDays: Record<string, number> = {};
+    placementAssignments.forEach((assignment) => {
+      const normalizedDay = Math.min(Math.max(1, assignment.proposedDayNumber), totalDays);
+      initialDays[assignment.suggestionId] = normalizedDay;
+    });
+    setConfirmedPlacementDays(initialDays);
+  }, [isPlacementConfirmationMode, open, placementAssignments, totalDays]);
 
   const selectedTrip = userTrips?.find(t => t.id === selectedTripId);
 
@@ -167,6 +197,92 @@ export function AddToItineraryDialog({
   };
 
   const isCreateTripFormValid = newTripTitle.trim() && newTripDestination.trim() && newTripCountry.trim();
+
+  const handlePlacementDayUpdate = (suggestionId: string, value: number) => {
+    const normalized = Math.min(Math.max(1, value || 1), totalDays);
+    setConfirmedPlacementDays((prev) => ({
+      ...prev,
+      [suggestionId]: normalized,
+    }));
+  };
+
+  const handleConfirmPlacements = () => {
+    if (!placementAssignments || !onConfirmPlacements) return;
+
+    const payload = placementAssignments.map((assignment) => ({
+      suggestionId: assignment.suggestionId,
+      confirmedDayNumber: confirmedPlacementDays[assignment.suggestionId] || assignment.proposedDayNumber || 1,
+    }));
+
+    onConfirmPlacements(payload);
+  };
+
+  if (isPlacementConfirmationMode && placementAssignments) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirm Day Assignments</DialogTitle>
+            <DialogDescription>
+              Review each selected suggestion and confirm which day it should be added to.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[50vh] pr-3">
+            <div className="space-y-3">
+              {placementAssignments.map((assignment) => (
+                <div key={assignment.suggestionId} className="rounded-xl border border-border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-foreground">{assignment.displayName}</p>
+                    <Badge variant="secondary" className="text-[10px] uppercase">
+                      {assignment.mode === 'manual' ? 'manual' : 'ai'}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Day</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={totalDays}
+                      className="h-8 w-24"
+                      value={confirmedPlacementDays[assignment.suggestionId] || assignment.proposedDayNumber}
+                      onChange={(event) => handlePlacementDayUpdate(assignment.suggestionId, Number(event.target.value))}
+                    />
+                    <span className="text-xs text-muted-foreground">of {totalDays}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => onOpenChange(false)}
+              disabled={isConfirmingPlacements}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handleConfirmPlacements}
+              disabled={isConfirmingPlacements}
+            >
+              {isConfirmingPlacements ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Confirm assignments'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   if (!user) {
     return (

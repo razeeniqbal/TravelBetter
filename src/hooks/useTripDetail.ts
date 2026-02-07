@@ -5,6 +5,20 @@ import { AUTH_DISABLED } from '@/lib/flags';
 import { getGuestTripById } from '@/lib/guestTrips';
 import { sanitizeTrip } from '@/lib/itinerarySanitizer';
 
+export const TRIP_DETAIL_QUERY_KEY = 'trip-detail';
+export const ITINERARY_PLACES_QUERY_KEY = 'itinerary-places';
+
+const TRIP_DETAIL_STALE_TIME = 5 * 60 * 1000;
+const TRIP_DETAIL_GC_TIME = 30 * 60 * 1000;
+
+export function getTripDetailQueryKey(tripId: string | undefined) {
+  return [TRIP_DETAIL_QUERY_KEY, tripId] as const;
+}
+
+export function getItineraryPlacesQueryKey(dayItineraryId: string | null) {
+  return [ITINERARY_PLACES_QUERY_KEY, dayItineraryId] as const;
+}
+
 interface DbTrip {
   id: string;
   title: string;
@@ -67,6 +81,11 @@ interface DbItineraryPlace {
 
 function mapDbPlaceToPlace(dbPlace: DbItineraryPlace): Place {
   const place = dbPlace.places;
+  const commuteDurationMinutes = dbPlace.walking_time_from_previous || undefined;
+  const commuteDistanceMeters = commuteDurationMinutes
+    ? Math.round(commuteDurationMinutes * 80)
+    : undefined;
+
   return {
     id: dbPlace.place_id,
     name: place?.name || 'Unknown Place',
@@ -84,15 +103,31 @@ function mapDbPlaceToPlace(dbPlace: DbItineraryPlace): Place {
       ? { lat: Number(place.latitude), lng: Number(place.longitude) }
       : undefined,
     walkingTimeFromPrevious: dbPlace.walking_time_from_previous || undefined,
+    commuteDurationMinutes,
+    commuteDistanceMeters,
+    arrivalTime: dbPlace.scheduled_time || undefined,
+    stayDurationMinutes: place?.duration || undefined,
     tips: place?.tips || undefined,
     openingHours: place?.opening_hours || undefined,
     confidence: dbPlace.confidence || undefined,
   };
 }
 
+function groupPlacesByDayId(items: DbItineraryPlace[]) {
+  const byDayId = new Map<string, Place[]>();
+
+  for (const item of items) {
+    const list = byDayId.get(item.day_itinerary_id) || [];
+    list.push(mapDbPlaceToPlace(item));
+    byDayId.set(item.day_itinerary_id, list);
+  }
+
+  return byDayId;
+}
+
 export function useTripDetail(tripId: string | undefined) {
   return useQuery({
-    queryKey: ['trip-detail', tripId],
+    queryKey: getTripDetailQueryKey(tripId),
     queryFn: async (): Promise<Trip | null> => {
       if (!tripId) return null;
       if (AUTH_DISABLED) {
@@ -174,10 +209,9 @@ export function useTripDetail(tripId: string | undefined) {
       }
 
       // Build itinerary structure
+      const placesByDayId = groupPlacesByDayId(itineraryPlaces);
       const itinerary: DayItinerary[] = dbDays.map(day => {
-        const dayPlaces = itineraryPlaces
-          .filter(ip => ip.day_itinerary_id === day.id)
-          .map(mapDbPlaceToPlace);
+        const dayPlaces = placesByDayId.get(day.id) || [];
 
         return {
           day: day.day_number,
@@ -217,12 +251,17 @@ export function useTripDetail(tripId: string | undefined) {
       return sanitizeTrip(trip).trip;
     },
     enabled: !!tripId,
+    staleTime: TRIP_DETAIL_STALE_TIME,
+    gcTime: TRIP_DETAIL_GC_TIME,
+    placeholderData: previousData => previousData,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
 export function useItineraryPlaces(dayItineraryId: string | null) {
   return useQuery({
-    queryKey: ['itinerary-places', dayItineraryId],
+    queryKey: getItineraryPlacesQueryKey(dayItineraryId),
     queryFn: async (): Promise<Place[]> => {
       if (!dayItineraryId) return [];
 
@@ -258,5 +297,10 @@ export function useItineraryPlaces(dayItineraryId: string | null) {
       return (data as DbItineraryPlace[]).map(mapDbPlaceToPlace);
     },
     enabled: !!dayItineraryId,
+    staleTime: TRIP_DETAIL_STALE_TIME,
+    gcTime: TRIP_DETAIL_GC_TIME,
+    placeholderData: previousData => previousData,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }

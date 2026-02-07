@@ -10,6 +10,14 @@ import { AISuggestionsList, AISuggestion } from './AISuggestionsList';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import type { ParsedDayGroup } from '@/types/itinerary';
+import {
+  AddPlacesOptionsDialog,
+  type PlacementModeDecision,
+} from '@/components/trip/AddPlacesOptionsDialog';
+import {
+  AddToItineraryDialog,
+  type PlacementAssignment,
+} from '@/components/trip/AddToItineraryDialog';
 
 type ChatStep = 'customize' | 'preview' | 'loading' | 'suggestions';
 
@@ -24,7 +32,7 @@ function splitCommaCandidates(value: string) {
 
 export function parsePlacesFromPrompt(prompt: string, fallback: string[]): string[] {
   const lines = prompt.split(/\r?\n/).map(line => line.trim());
-  let extracted: string[] = [];
+  const extracted: string[] = [];
   const seen = new Set<string>();
   const headerIndex = lines.findIndex(line => /places from my itinerary/i.test(line));
 
@@ -83,6 +91,14 @@ export function parsePlacesFromPrompt(prompt: string, fallback: string[]): strin
   return extracted.length > 0 ? extracted : fallback;
 }
 
+function buildSuggestionId(suggestion: AISuggestion, index: number): string {
+  if (suggestion.suggestionId && suggestion.suggestionId.trim()) {
+    return suggestion.suggestionId;
+  }
+
+  return `suggestion-${index}-${suggestion.name.toLowerCase().replace(/\s+/g, '-')}`;
+}
+
 interface PersonalizationChatInterfaceProps {
   destination: string;
   seedPlaces: string[];
@@ -108,6 +124,11 @@ export function PersonalizationChatInterface({
   onComplete,
   onSkip,
 }: PersonalizationChatInterfaceProps) {
+  const loadingStages = [
+    'Understanding destination context',
+    'Structuring day-by-day timeline',
+    'Finalizing personalized suggestions',
+  ];
   const [chatStep, setChatStep] = useState<ChatStep>('customize');
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
@@ -116,6 +137,12 @@ export function PersonalizationChatInterface({
   const [tripDays, setTripDays] = useState(duration || 3);
   const [finalizedPlaces, setFinalizedPlaces] = useState<string[]>([]);
   const [autoFilledPrompt, setAutoFilledPrompt] = useState(false);
+  const [placementDialogOpen, setPlacementDialogOpen] = useState(false);
+  const [placementConfirmOpen, setPlacementConfirmOpen] = useState(false);
+  const [pendingPlacementSuggestions, setPendingPlacementSuggestions] = useState<AISuggestion[]>([]);
+  const [placementAssignments, setPlacementAssignments] = useState<PlacementAssignment[]>([]);
+  const [isResolvingPlacements, setIsResolvingPlacements] = useState(false);
+  const [loadingStageIndex, setLoadingStageIndex] = useState(0);
 
   const {
     state,
@@ -152,6 +179,23 @@ export function PersonalizationChatInterface({
     setCustomPrompt(trimmed);
     setAutoFilledPrompt(true);
   }, [parsedRequest, setCustomPrompt]);
+
+  useEffect(() => {
+    if (chatStep !== 'loading') {
+      setLoadingStageIndex(0);
+      return;
+    }
+
+    setLoadingStageIndex(0);
+    const timers = [
+      window.setTimeout(() => setLoadingStageIndex(1), 1200),
+      window.setTimeout(() => setLoadingStageIndex(2), 2400),
+    ];
+
+    return () => {
+      timers.forEach(timer => window.clearTimeout(timer));
+    };
+  }, [chatStep]);
 
 
   const handleGetSuggestions = async () => {
@@ -196,10 +240,9 @@ export function PersonalizationChatInterface({
       setProcessingTime(endTime - startTime);
 
       if (data?.suggestions && data.suggestions.length > 0) {
-        setSuggestions(data.suggestions.map((s: AISuggestion) => ({
+        setSuggestions(data.suggestions.map((s: AISuggestion, index: number) => ({
           ...s,
-          accepted: false,
-          rejected: false,
+          suggestionId: buildSuggestionId(s, index),
         })));
         // Store the AI-resolved destination for use when creating the trip
         if (data.resolvedDestination) {
@@ -220,30 +263,139 @@ export function PersonalizationChatInterface({
     }
   };
 
-  const handleAccept = (index: number) => {
-    setSuggestions(prev => 
-      prev.map((s, i) => i === index ? { ...s, accepted: true, rejected: false } : s)
-    );
-  };
-
-  const handleReject = (index: number) => {
-    setSuggestions(prev => 
-      prev.map((s, i) => i === index ? { ...s, rejected: true, accepted: false } : s)
-    );
-  };
-
-  const handleAcceptAll = () => {
-    setSuggestions(prev => 
-      prev.map(s => s.rejected ? s : { ...s, accepted: true })
-    );
-  };
-
-  const handleContinue = () => {
-    const selectedPlaces = suggestions.filter(s => s.accepted);
+  const handleContinue = (selectedSuggestions: AISuggestion[]) => {
     const parsedPlaces = finalizedPlaces.length > 0
       ? finalizedPlaces
       : parsePlacesFromPrompt(displayPrompt, seedPlaces);
-    onComplete(selectedPlaces, tripDays, resolvedDestination, parsedPlaces);
+
+    if (selectedSuggestions.length === 0) {
+      onComplete([], tripDays, resolvedDestination, parsedPlaces);
+      return;
+    }
+
+    setPendingPlacementSuggestions(selectedSuggestions);
+    setPlacementDialogOpen(true);
+  };
+
+  const handlePlacementModeConfirm = async (decisions: PlacementModeDecision[]) => {
+    setPlacementDialogOpen(false);
+    setIsResolvingPlacements(true);
+
+    try {
+      const manual = decisions.filter(item => item.mode === 'manual');
+      const ai = decisions.filter(item => item.mode === 'ai');
+      const assignments: PlacementAssignment[] = [];
+
+      if (manual.length > 0) {
+        const { data, error } = await api.previewSuggestionPlacement('trip-preview', {
+          mode: 'manual',
+          selectedSuggestions: manual.map(item => ({
+            suggestionId: item.suggestionId,
+            displayName: item.displayName,
+            manualDayNumber: item.manualDayNumber || 1,
+          })),
+          destinationContext: destination,
+        });
+
+        if (error || !data) {
+          throw error || new Error('Failed to preview manual placement');
+        }
+
+        data.placements.forEach((placement) => {
+          assignments.push({
+            suggestionId: placement.suggestionId,
+            displayName: placement.displayName,
+            mode: 'manual',
+            proposedDayNumber: placement.proposedDayNumber,
+            confidence: placement.confidence,
+          });
+        });
+      }
+
+      if (ai.length > 0) {
+        const { data, error } = await api.previewSuggestionPlacement('trip-preview', {
+          mode: 'ai',
+          selectedSuggestions: ai.map(item => ({
+            suggestionId: item.suggestionId,
+            displayName: item.displayName,
+          })),
+          destinationContext: destination,
+        });
+
+        if (error || !data) {
+          throw error || new Error('Failed to preview AI-assisted placement');
+        }
+
+        data.placements.forEach((placement) => {
+          assignments.push({
+            suggestionId: placement.suggestionId,
+            displayName: placement.displayName,
+            mode: 'ai',
+            proposedDayNumber: placement.proposedDayNumber,
+            confidence: placement.confidence,
+          });
+        });
+      }
+
+      const assignmentsBySuggestionId = new Map(assignments.map(item => [item.suggestionId, item]));
+      const normalizedAssignments = decisions.map((decision) => {
+        const preview = assignmentsBySuggestionId.get(decision.suggestionId);
+        if (preview) return preview;
+
+        return {
+          suggestionId: decision.suggestionId,
+          displayName: decision.displayName,
+          mode: decision.mode,
+          proposedDayNumber: decision.manualDayNumber || 1,
+          confidence: decision.mode === 'manual' ? 'high' : 'medium',
+        } as PlacementAssignment;
+      });
+
+      setPlacementAssignments(normalizedAssignments);
+      setPlacementConfirmOpen(true);
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'Unable to prepare placement confirmation';
+      toast.error(message);
+    } finally {
+      setIsResolvingPlacements(false);
+    }
+  };
+
+  const handleConfirmPlacements = async (
+    placements: Array<{ suggestionId: string; confirmedDayNumber: number }>
+  ) => {
+    const parsedPlaces = finalizedPlaces.length > 0
+      ? finalizedPlaces
+      : parsePlacesFromPrompt(displayPrompt, seedPlaces);
+
+    setIsResolvingPlacements(true);
+
+    try {
+      const { error } = await api.commitSuggestionPlacement('trip-preview', { placements });
+      if (error) throw error;
+
+      const confirmedDayBySuggestionId = new Map(
+        placements.map(item => [item.suggestionId, item.confirmedDayNumber])
+      );
+
+      const selectedPlaces = pendingPlacementSuggestions.map((suggestion) => ({
+        ...suggestion,
+        confirmedDayNumber: confirmedDayBySuggestionId.get(suggestion.suggestionId || '') || 1,
+      }));
+
+      setPlacementConfirmOpen(false);
+      setPlacementAssignments([]);
+      setPendingPlacementSuggestions([]);
+
+      onComplete(selectedPlaces, tripDays, resolvedDestination, parsedPlaces);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save placement assignments';
+      toast.error(message);
+    } finally {
+      setIsResolvingPlacements(false);
+    }
   };
 
   const handleSkip = () => {
@@ -316,6 +468,7 @@ export function PersonalizationChatInterface({
               autoFilled={autoFilledPrompt}
               onReset={resetToGenerated}
               charCount={charCount}
+              importStatusText={parsedPreview ? 'You can edit imported OCR text before generating ideas.' : undefined}
             />
 
             <div className="flex gap-3">
@@ -361,7 +514,7 @@ export function PersonalizationChatInterface({
               Finding perfect places...
             </p>
             <p className="mt-2 text-sm text-muted-foreground animate-pulse">
-              Analyzing your preferences
+              {loadingStages[loadingStageIndex]}
             </p>
           </div>
         )}
@@ -372,9 +525,6 @@ export function PersonalizationChatInterface({
             suggestions={suggestions}
             processingTime={processingTime}
             requiredPlaces={finalizedPlaces}
-            onAccept={handleAccept}
-            onReject={handleReject}
-            onAcceptAll={handleAcceptAll}
             onContinue={handleContinue}
           />
         )}
@@ -386,6 +536,26 @@ export function PersonalizationChatInterface({
         onOpenChange={setExamplesOpen}
         onSelectTemplate={applyTemplate}
         destination={destination}
+      />
+
+      <AddPlacesOptionsDialog
+        open={placementDialogOpen}
+        onOpenChange={setPlacementDialogOpen}
+        suggestions={pendingPlacementSuggestions.map((suggestion) => ({
+          suggestionId: suggestion.suggestionId || suggestion.name,
+          displayName: suggestion.name,
+        }))}
+        totalDays={tripDays}
+        onConfirmPlacementModes={handlePlacementModeConfirm}
+      />
+
+      <AddToItineraryDialog
+        open={placementConfirmOpen}
+        onOpenChange={setPlacementConfirmOpen}
+        placementAssignments={placementAssignments}
+        totalDays={tripDays}
+        isConfirmingPlacements={isResolvingPlacements}
+        onConfirmPlacements={handleConfirmPlacements}
       />
     </div>
   );

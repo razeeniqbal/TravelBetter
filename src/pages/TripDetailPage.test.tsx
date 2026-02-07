@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Trip } from '@/types/trip';
 
 const mockTrip = vi.hoisted((): Trip => ({
@@ -23,7 +23,20 @@ const mockTrip = vi.hoisted((): Trip => ({
           placeId: 'place-1-id',
           category: 'culture',
           source: 'user',
+          stayDurationMinutes: 60,
           coordinates: { lat: 1.23, lng: 4.56 },
+        },
+        {
+          id: 'place-2',
+          name: 'Second Stop',
+          displayName: 'Second Stop Canonical',
+          placeId: 'place-2-id',
+          category: 'food',
+          source: 'ai',
+          stayDurationMinutes: 90,
+          commuteDurationMinutes: 15,
+          commuteDistanceMeters: 1200,
+          coordinates: { lat: 1.25, lng: 4.58 },
         },
       ],
     },
@@ -44,12 +57,60 @@ const clickHandlers = vi.hoisted(() => ({
   draggable: undefined as undefined | (() => void),
 }));
 
+const mapHandlers = vi.hoisted(() => ({
+  markerTap: undefined as undefined | (() => void),
+}));
+
+const navigateMock = vi.hoisted(() => vi.fn());
+
+const editState = vi.hoisted(() => ({
+  isEditMode: false,
+  hasUnsavedChanges: false,
+  toggleEditMode: vi.fn(),
+  reorderPlaces: vi.fn(),
+  movePlaceBetweenDays: vi.fn(),
+  removePlace: vi.fn(),
+  setAsAnchor: vi.fn(),
+  saveChanges: vi.fn(),
+  discardChanges: vi.fn(),
+}));
+
+const tripQueryState = vi.hoisted(() => ({
+  data: mockTrip as Trip | null,
+  isLoading: false,
+}));
+
 vi.mock('@/components/trip/MapPlaceholder', () => ({
-  MapPlaceholder: () => <div data-testid="map" />,
+  MapPlaceholder: ({
+    places,
+    onMarkerClick,
+  }: {
+    places?: Array<{ id: string; name: string }>;
+    onMarkerClick?: (place: { id: string; name: string }) => void;
+  }) => {
+    mapHandlers.markerTap = () => {
+      const first = places?.[0];
+      if (first) {
+        onMarkerClick?.(first);
+      }
+    };
+
+    return (
+      <button type="button" onClick={() => mapHandlers.markerTap?.()}>
+        Mock marker tap
+      </button>
+    );
+  },
 }));
 
 vi.mock('@/components/shared/ShareModal', () => ({
-  ShareModal: () => null,
+  ShareModal: ({
+    open,
+    onOpenChange,
+  }: {
+    open: boolean;
+    onOpenChange?: (open: boolean) => void;
+  }) => (open ? <button type="button" onClick={() => onOpenChange?.(false)}>Share modal open</button> : null),
 }));
 
 vi.mock('@/components/trip/AddToItineraryDialog', () => ({
@@ -65,22 +126,63 @@ vi.mock('@/components/trip/AddPlacesOptionsDialog', () => ({
 }));
 
 vi.mock('@/components/trip/TimelinePlace', () => ({
-  TimelinePlace: ({ place, onClick }: { place: { name: string }; onClick?: () => void }) => {
+  TimelinePlace: ({
+    place,
+    onClick,
+    isHighlighted,
+  }: {
+    place: { name: string; commuteDurationMinutes?: number };
+    onClick?: () => void;
+    isHighlighted?: boolean;
+  }) => {
     clickHandlers.timeline = onClick;
     return (
-      <button type="button" onClick={onClick}>
-        {place.name}
-      </button>
+      <div>
+        <button type="button" onClick={onClick}>
+          {place.name}
+        </button>
+        {place.commuteDurationMinutes ? (
+          <span>{`Commute from previous: ${place.commuteDurationMinutes} min`}</span>
+        ) : null}
+        {isHighlighted ? <span>Highlighted</span> : null}
+      </div>
     );
   },
 }));
 
 vi.mock('@/components/trip/DraggableTimeline', () => ({
-  DraggableTimeline: ({ places, onPlaceClick }: { places: { id: string; name: string }[]; onPlaceClick?: (place: { id: string; name: string }) => void }) => {
-    if (places[0]) {
-      clickHandlers.draggable = () => onPlaceClick?.(places[0]);
+  DraggableTimeline: ({
+    days,
+    activeDay,
+    onReorder,
+    onMoveBetweenDays,
+    onPlaceClick,
+  }: {
+    days: Array<{ day: number; places: { id: string; name: string }[] }>;
+    activeDay: number;
+    onReorder: (dayIndex: number, sourceIndex: number, destinationIndex: number) => void;
+    onMoveBetweenDays: (
+      sourceDayIndex: number,
+      destinationDayIndex: number,
+      sourceIndex: number,
+      destinationIndex: number
+    ) => void;
+    onPlaceClick?: (place: { id: string; name: string }) => void;
+  }) => {
+    const day = days.find(item => item.day === activeDay) || days[0];
+    if (day?.places[0]) {
+      clickHandlers.draggable = () => onPlaceClick?.(day.places[0]);
     }
-    return <div data-testid="draggable-timeline" />;
+    return (
+      <div data-testid="draggable-timeline">
+        <button type="button" onClick={() => onReorder(0, 0, 0)}>
+          Mock reorder
+        </button>
+        <button type="button" onClick={() => onMoveBetweenDays(0, 1, 0, 0)}>
+          Mock cross-day move
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -100,20 +202,22 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 vi.mock('@/hooks/useTripDetail', () => ({
-  useTripDetail: () => ({ data: mockTrip, isLoading: false }),
+  useTripDetail: () => ({ data: tripQueryState.data, isLoading: tripQueryState.isLoading }),
 }));
 
 vi.mock('@/hooks/useTripEdit', () => ({
   useTripEdit: () => ({
-    isEditMode: false,
-    toggleEditMode: vi.fn(),
+    isEditMode: editState.isEditMode,
+    hasUnsavedChanges: editState.hasUnsavedChanges,
+    toggleEditMode: editState.toggleEditMode,
     itinerary: mockTrip.itinerary,
-    reorderPlaces: vi.fn(),
-    removePlace: vi.fn(),
+    reorderPlaces: editState.reorderPlaces,
+    movePlaceBetweenDays: editState.movePlaceBetweenDays,
+    removePlace: editState.removePlace,
     anchorPlaceId: null,
-    setAsAnchor: vi.fn(),
-    saveChanges: vi.fn(),
-    discardChanges: vi.fn(),
+    setAsAnchor: editState.setAsAnchor,
+    saveChanges: editState.saveChanges,
+    discardChanges: editState.discardChanges,
     isSaving: false,
   }),
 }));
@@ -139,11 +243,175 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     useParams: () => ({ tripId: 'trip-1' }),
-    useNavigate: () => vi.fn(),
+    useNavigate: () => navigateMock,
   };
 });
 
 describe('TripDetailPage', () => {
+  beforeEach(() => {
+    tripQueryState.data = mockTrip;
+    tripQueryState.isLoading = false;
+    editState.isEditMode = false;
+    editState.hasUnsavedChanges = false;
+    editState.toggleEditMode.mockReset();
+    editState.reorderPlaces.mockReset();
+    editState.movePlaceBetweenDays.mockReset();
+    editState.removePlace.mockReset();
+    editState.setAsAnchor.mockReset();
+    editState.saveChanges.mockReset();
+    editState.discardChanges.mockReset();
+    navigateMock.mockReset();
+    mapHandlers.markerTap = undefined;
+  });
+
+  it('shows consistent loading and empty states', async () => {
+    tripQueryState.isLoading = true;
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText(/loading trip/i)).toBeInTheDocument();
+
+    unmount();
+    tripQueryState.isLoading = false;
+    tripQueryState.data = null;
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText(/trip not found/i)).toBeInTheDocument();
+  });
+
+  it('prompts before sharing with unsaved edits and opens share after confirm', async () => {
+    editState.isEditMode = true;
+    editState.hasUnsavedChanges = true;
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /share trip/i }));
+    expect(confirmSpy).toHaveBeenCalledWith('You have unsaved edits. Share without saving your itinerary changes?');
+    expect(screen.queryByRole('button', { name: /share modal open/i })).not.toBeInTheDocument();
+
+    confirmSpy.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: /share trip/i }));
+    expect(await screen.findByRole('button', { name: /share modal open/i })).toBeInTheDocument();
+
+    confirmSpy.mockRestore();
+  });
+
+  it('shows save controls in edit mode and triggers save', async () => {
+    editState.isEditMode = true;
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    const saveButton = await screen.findByRole('button', { name: /save changes/i });
+    fireEvent.click(saveButton);
+    expect(editState.saveChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers discard when cancel is clicked in edit mode', async () => {
+    editState.isEditMode = true;
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    editState.discardChanges.mockClear();
+
+    const cancelButton = await screen.findByRole('button', { name: /cancel/i });
+    fireEvent.click(cancelButton);
+    expect(editState.discardChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('wires reorder and cross-day move callbacks into the timeline', async () => {
+    editState.isEditMode = true;
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    const continueEditingButton = await screen.findByRole('button', { name: /continue editing/i });
+    fireEvent.click(continueEditingButton);
+
+    const reorderButton = await screen.findByRole('button', { name: /mock reorder/i });
+    fireEvent.click(reorderButton);
+
+    const moveButton = await screen.findByRole('button', { name: /mock cross-day move/i });
+    fireEvent.click(moveButton);
+
+    expect(editState.reorderPlaces).toHaveBeenCalledWith(0, 0, 0);
+    expect(editState.movePlaceBetweenDays).toHaveBeenCalledWith(0, 1, 0, 0);
+  });
+
+  it('prompts before leaving when unsaved edits exist', async () => {
+    editState.isEditMode = true;
+    editState.hasUnsavedChanges = true;
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    const backButton = await screen.findByRole('button', { name: /go back/i });
+    fireEvent.click(backButton);
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it('handles marker-to-card focus, commute details, and open route action', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /mock marker tap/i }));
+    expect(await screen.findByText('Commute from previous: 15 min')).toBeInTheDocument();
+    expect(screen.getByText('Highlighted')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /open route/i }));
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining('google.com/maps/dir'),
+      '_blank',
+      'noopener,noreferrer'
+    );
+
+    openSpy.mockRestore();
+  });
+
   it.skip('opens Google Maps reviews when a place is clicked', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     const { default: TripDetailPage } = await import('./TripDetailPage');

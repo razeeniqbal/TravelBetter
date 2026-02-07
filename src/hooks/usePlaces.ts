@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Place, PlaceCategory } from '@/types/trip';
+import { api } from '@/lib/api';
 
 interface DbPlace {
   id: string;
@@ -177,33 +178,22 @@ export function usePlaceReviews(placeId: string | undefined) {
     queryFn: async () => {
       if (!placeId) return [];
 
-      const { data, error } = await supabase
-        .from('place_reviews')
-        .select(`
-          *,
-          profiles:user_id (
-            id,
-            username,
-            full_name,
-            avatar_url
-          )
-        `)
-        .eq('place_id', placeId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching place reviews:', error);
+      const { data, error } = await api.getPlaceReviews(placeId, 5);
+      if (error || !data) {
+        if (error) {
+          console.error('Error fetching place reviews:', error);
+        }
         return [];
       }
 
-      return data.map(review => ({
-        id: review.id,
-        name: (review.profiles as { full_name?: string; username?: string })?.full_name || 
-              (review.profiles as { username?: string })?.username || 'Anonymous',
-        avatar: (review.profiles as { avatar_url?: string })?.avatar_url || '',
+      return data.reviews.slice(0, 5).map(review => ({
+        id: review.reviewId,
+        name: review.authorName || 'Anonymous',
+        avatar: review.authorAvatarUrl || '',
         rating: review.rating || 0,
         text: review.text || '',
-        time: review.created_at ? formatTimeAgo(new Date(review.created_at)) : 'recently',
+        time: review.relativeTimeText || formatTimeAgo(new Date(review.createdAt)),
+        sourceUrl: review.sourceUrl || '',
       }));
     },
     enabled: !!placeId,

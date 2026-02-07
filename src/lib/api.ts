@@ -1,10 +1,26 @@
 // API helper for calling Vercel serverless functions
 
 import type {
-  ParsedDayGroup,
+  ItineraryDraftSaveRequest,
+  ItineraryDraftSaveResponse,
+  MapLinkResponse,
   ParseItineraryResponse,
+  ParsedDayGroup,
+  PlacementCommitRequest,
+  PlacementCommitResponse,
+  PlacementPreviewRequest,
+  PlacementPreviewResponse,
+  PlaceReviewsResponse,
   ResolvePlacesRequest,
   ResolvePlacesResponse,
+  RouteLinkRequest,
+  RouteLinkResponse,
+  ScreenshotExtractRequest,
+  ScreenshotExtractResponse,
+  ScreenshotSubmitRequest,
+  ScreenshotSubmitResponse,
+  StopTimingUpdateRequest,
+  StopTimingUpdateResponse,
 } from '@/types/itinerary';
 
 const API_BASE = '/api';
@@ -69,14 +85,59 @@ export function clearApiCache(): void {
   aiSuggestionsCache.clear();
 }
 
-async function fetchApi<T>(endpoint: string, body: Record<string, unknown>): Promise<ApiResponse<T>> {
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+type QueryParams = Record<string, string | number | boolean | null | undefined>;
+
+interface FetchApiOptions {
+  method?: HttpMethod;
+  body?: Record<string, unknown>;
+  query?: QueryParams;
+}
+
+function isFetchOptions(value: unknown): value is FetchApiOptions {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && ('method' in (value as Record<string, unknown>)
+      || 'query' in (value as Record<string, unknown>)
+      || 'body' in (value as Record<string, unknown>))
+  );
+}
+
+function buildApiUrl(endpoint: string, query?: QueryParams): string {
+  const base = `${API_BASE}/${endpoint}`;
+  if (!query) return base;
+
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    params.append(key, String(value));
+  });
+
+  const queryString = params.toString();
+  return queryString ? `${base}?${queryString}` : base;
+}
+
+async function fetchApi<T>(
+  endpoint: string,
+  bodyOrOptions: Record<string, unknown> | FetchApiOptions = {}
+): Promise<ApiResponse<T>> {
+  const options = isFetchOptions(bodyOrOptions)
+    ? bodyOrOptions
+    : { method: 'POST' as const, body: bodyOrOptions };
+
+  const method = options.method ?? 'POST';
+  const url = buildApiUrl(endpoint, options.query);
+  const hasBody = options.body && method !== 'GET';
+
   try {
-    const response = await fetch(`${API_BASE}/${endpoint}`, {
-      method: 'POST',
+    const response = await fetch(url, {
+      method,
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: hasBody ? JSON.stringify(options.body) : undefined,
     });
 
     if (!response.ok) {
@@ -103,7 +164,7 @@ async function fetchApiWithCache<T>(endpoint: string, body: Record<string, unkno
   }
 
   // Fetch from API
-  const result = await fetchApi<T>(endpoint, body);
+  const result = await fetchApi<T>(endpoint, { method: 'POST', body });
 
   // Cache successful responses
   if (result.data && !result.error) {
@@ -225,6 +286,73 @@ export const api = {
 
   resolvePlaces: (request: ResolvePlacesRequest) =>
     fetchApi<ResolvePlacesResponse>('resolve-places', request as unknown as Record<string, unknown>),
+
+  saveItineraryDraft: (tripId: string, request: ItineraryDraftSaveRequest) =>
+    fetchApi<ItineraryDraftSaveResponse>('itinerary-draft', {
+      method: 'PUT',
+      body: {
+        tripId,
+        ...request,
+      },
+    }),
+
+  previewSuggestionPlacement: (tripId: string, request: PlacementPreviewRequest) =>
+    fetchApi<PlacementPreviewResponse>('suggestion-placement-preview', {
+      method: 'POST',
+      body: {
+        tripId,
+        ...request,
+      },
+    }),
+
+  commitSuggestionPlacement: (tripId: string, request: PlacementCommitRequest) =>
+    fetchApi<PlacementCommitResponse>('suggestion-placement-commit', {
+      method: 'POST',
+      body: {
+        tripId,
+        ...request,
+      },
+    }),
+
+  updateStopTiming: (tripId: string, stopId: string, request: StopTimingUpdateRequest) =>
+    fetchApi<StopTimingUpdateResponse>('stop-timing', {
+      method: 'PATCH',
+      body: {
+        tripId,
+        stopId,
+        ...request,
+      },
+    }),
+
+  getPlaceReviews: (placeId: string, limit = 5) =>
+    fetchApi<PlaceReviewsResponse>('place-reviews', {
+      method: 'GET',
+      query: { placeId, limit },
+    }),
+
+  getPlaceMapLink: (placeId: string) =>
+    fetchApi<MapLinkResponse>('place-map-link', {
+      method: 'GET',
+      query: { placeId },
+    }),
+
+  buildRouteLink: (request: RouteLinkRequest) =>
+    fetchApi<RouteLinkResponse>('route-link', {
+      method: 'POST',
+      body: request as unknown as Record<string, unknown>,
+    }),
+
+  extractScreenshots: (request: ScreenshotExtractRequest) =>
+    fetchApi<ScreenshotExtractResponse>('screenshot-extract', {
+      method: 'POST',
+      body: request as unknown as Record<string, unknown>,
+    }),
+
+  submitScreenshotText: (request: ScreenshotSubmitRequest) =>
+    fetchApi<ScreenshotSubmitResponse>('screenshot-submit', {
+      method: 'POST',
+      body: request as unknown as Record<string, unknown>,
+    }),
 
   // Uses caching to reduce duplicate API calls for the same destination/prompt
   generateAISuggestions: (params: {

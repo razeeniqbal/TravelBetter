@@ -13,6 +13,7 @@ import {
 
 interface DraggableTimelinePlaceProps {
   place: Place;
+  sortableId?: string;
   index: number;
   time?: string;
   isLast?: boolean;
@@ -25,6 +26,7 @@ interface DraggableTimelinePlaceProps {
 
 export function DraggableTimelinePlace({ 
   place, 
+  sortableId,
   index, 
   time, 
   isLast, 
@@ -41,7 +43,7 @@ export function DraggableTimelinePlace({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: place.id, disabled: !isEditMode });
+  } = useSortable({ id: sortableId ?? place.id, disabled: !isEditMode });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -99,7 +101,7 @@ export function DraggableTimelinePlace({
       {/* Timeline Line & Number */}
       <div className="relative flex flex-col items-center">
         <div className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-all',
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-all sm:h-10 sm:w-10',
           isAnchor
             ? 'bg-amber-500 text-white ring-2 ring-amber-300'
             : place.source === 'ai' 
@@ -127,13 +129,14 @@ export function DraggableTimelinePlace({
       >
         {/* Drag Handle */}
         {isEditMode && (
-          <div 
-            {...attributes} 
-            {...listeners}
-            className="flex cursor-grab items-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
-          >
-            <GripVertical className="h-5 w-5" />
-          </div>
+            <div 
+              {...attributes} 
+              {...listeners}
+              className="touch-none flex cursor-grab items-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+              aria-label={`Drag ${place.name}`}
+            >
+              <GripVertical className="h-5 w-5" />
+            </div>
         )}
 
         {/* Thumbnail */}
@@ -160,7 +163,7 @@ export function DraggableTimelinePlace({
                   </span>
                 )}
                 {isAnchor && (
-                  <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                     <Home className="h-3 w-3" />
                     Anchor
                   </span>

@@ -6,9 +6,21 @@ AI-powered travel planning app to help you discover and organize your perfect tr
 
 - AI-powered place suggestions based on your preferences
 - Extract travel places from URLs (YouTube, Instagram, TikTok, etc.)
-- Extract travel places from images
+- Extract travel places from images and screenshot batches (OCR)
 - Trip planning and itinerary management
+- Drag-and-drop itinerary editing with explicit save/discard flow
+- Manual vs AI-assisted day placement before adding AI suggestions
+- Standardized trip cards with route deep-links, commute context, and review snippets
 - User authentication via Supabase
+
+## Release Notes
+
+### 2026-02-08 - Feature `006-itinerary-editing-ocr`
+
+- Added robust itinerary edit mode with within-day and cross-day drag support, plus explicit save/discard behavior.
+- Updated suggestion flow to checklist selection with required manual or AI-assisted placement confirmation before commit.
+- Standardized trip/stop cards with timing controls, commute details, marker-to-card focus, and map route actions.
+- Added multi-image screenshot OCR import with per-image status, editable extracted-text review, and retry/manual fallback recovery.
 
 ## Tech Stack
 
@@ -72,6 +84,13 @@ GOOGLE_GEOCODING_API_KEY=your_google_geocoding_key
 - `npm test` - Run tests
 - `npm run test:watch` - Run tests in watch mode
 
+## Engineering Quality Gates
+
+- All code changes must pass linting, type checks, and automated tests before merge
+- User-facing changes must keep UI patterns consistent and define loading/empty/success/error states
+- Features must include measurable performance targets for primary user journeys
+- Governance and standards are defined in `.specify/memory/constitution.md`
+
 ## Deployment on Vercel
 
 This app is designed to be deployed on Vercel with both frontend and API functions.
@@ -112,6 +131,14 @@ The following serverless functions are available:
 |----------|-------------|
 | `POST /api/extract-places-from-url` | Extract travel places from a URL |
 | `POST /api/extract-places-from-image` | Extract travel places from an image |
+| `POST /api/screenshot-extract` | Extract and merge OCR text from multiple screenshots |
+| `POST /api/screenshot-submit` | Submit reviewed OCR text into itinerary parser flow |
+| `POST /api/suggestion-placement-preview` | Preview manual/AI day placement assignments |
+| `POST /api/suggestion-placement-commit` | Commit confirmed day assignments for suggestions |
+| `PATCH /api/stop-timing` | Persist arrival/stay timing updates and commute recalculation |
+| `GET /api/place-reviews` | Fetch top public place reviews |
+| `GET /api/place-map-link` | Build direct place map deep link |
+| `POST /api/route-link` | Build full route deep link for ordered itinerary stops |
 | `POST /api/generate-ai-suggestions` | Generate AI-powered place suggestions |
 
 ## Project Structure

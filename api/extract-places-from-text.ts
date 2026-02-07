@@ -44,6 +44,30 @@ function hasExplicitDayHeaders(text: string) {
     .some(line => DAY_HEADER_REGEX.test(line) || DAY_HEADER_COMPACT_REGEX.test(line));
 }
 
+function collectNormalizationWarnings(placeNames: string[]) {
+  const warnings: string[] = [];
+  const seen = new Set<string>();
+  let hasDuplicate = false;
+  let hasAmbiguous = false;
+
+  for (const placeName of placeNames) {
+    const normalized = normalizeLabel(placeName);
+    if (!normalized) continue;
+    if (seen.has(normalized)) {
+      hasDuplicate = true;
+    } else {
+      seen.add(normalized);
+    }
+    if (/\?|\b(tbd|unknown|maybe)\b/i.test(placeName)) {
+      hasAmbiguous = true;
+    }
+  }
+
+  if (hasDuplicate) warnings.push('DUPLICATE_PLACE_NAMES');
+  if (hasAmbiguous) warnings.push('AMBIGUOUS_PLACE_NAME');
+  return warnings;
+}
+
 function buildDayGroupsFromPlaces(
   places: ExtractedPlace[],
   durationDays: number | null
@@ -337,6 +361,8 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
     }));
 
     const cleanedRequest = buildRequest(normalizedDayGroups, destinationLabel || null);
+    const normalizationWarnings = collectNormalizationWarnings(rawPlaces.map(place => place.name));
+    const warnings = [...new Set([...(parsed.warnings || []), ...normalizationWarnings])];
 
     console.log(`Extracted ${places.length} places from text`);
 
@@ -349,7 +375,7 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
       cleaned_request: cleanedRequest,
       preview_text: cleanedRequest,
       days: normalizedDayGroups,
-      warnings: parsed.warnings,
+      warnings,
       success: true
     });
   } catch (error) {

@@ -155,6 +155,9 @@ export function usePromptBuilder(
           ? prev.quickSelections.purposes.filter(p => p !== purpose)
           : [...prev.quickSelections.purposes, purpose],
       },
+      // Reset isEdited so the generated prompt with new personalization is shown  
+      isEdited: false,
+      customText: '',
     }));
   }, []);
 
@@ -162,6 +165,9 @@ export function usePromptBuilder(
     setState(prev => ({
       ...prev,
       quickSelections: { ...prev.quickSelections, travelers },
+      // Reset isEdited so the generated prompt with new personalization is shown
+      isEdited: false,
+      customText: '',
     }));
   }, []);
 
@@ -169,6 +175,9 @@ export function usePromptBuilder(
     setState(prev => ({
       ...prev,
       quickSelections: { ...prev.quickSelections, budget },
+      // Reset isEdited so the generated prompt with new personalization is shown
+      isEdited: false,
+      customText: '',
     }));
   }, []);
 
@@ -176,6 +185,9 @@ export function usePromptBuilder(
     setState(prev => ({
       ...prev,
       quickSelections: { ...prev.quickSelections, pace },
+      // Reset isEdited so the generated prompt with new personalization is shown
+      isEdited: false,
+      customText: '',
     }));
   }, []);
 

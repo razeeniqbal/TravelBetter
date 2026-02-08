@@ -4,7 +4,8 @@ import { getGoogleMapsReviewUrl } from './googleMaps';
 describe('getGoogleMapsReviewUrl', () => {
   it('builds a reviews URL when placeId is available', () => {
     const url = getGoogleMapsReviewUrl({ placeId: 'place-123' });
-    expect(url).toBe('https://www.google.com/maps/place/?q=place_id:place-123');
+    // Updated to use the search API format which properly opens locations instead of showing place_ID text
+    expect(url).toBe('https://www.google.com/maps/search/?api=1&query=place-123&query_place_id=place-123');
   });
 
   it('falls back to a Maps search query when placeId is missing', () => {

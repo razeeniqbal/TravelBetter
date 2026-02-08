@@ -62,8 +62,11 @@ type DaySectionProps = {
 const getDropZoneId = (dayNumber: number) => `day-drop-${dayNumber}`;
 
 function getTimeForIndex(index: number) {
-  const startHour = 9 + Math.floor(index * 1.5);
-  return `${startHour}:00 ${startHour < 12 ? 'AM' : 'PM'}`;
+  // Calculate hour with proper 24-hour wrapping to prevent invalid times like "36 p.m."
+  const hour24 = 9 + Math.floor(index * 1.5);
+  const hour12 = ((hour24 - 1) % 12) + 1; // Convert to 12-hour format (1-12)
+  const period = hour24 < 12 ? 'AM' : 'PM';
+  return `${hour12}:00 ${period}`;
 }
 
 function DaySection({
@@ -88,6 +91,7 @@ function DaySection({
         ref={setNodeRef}
         className={cn(
           'rounded-xl border border-border/60 bg-background/70 p-2',
+          isEditMode && 'touch-none', // Prevent touch scrolling during drag
           isEditMode && isOver && 'border-primary bg-primary/5'
         )}
       >

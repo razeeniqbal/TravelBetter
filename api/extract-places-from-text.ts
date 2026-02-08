@@ -154,8 +154,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 When given raw itinerary notes, first infer the primary destination city/region and country. Then extract places that belong to that destination.
 
+CRITICAL: When processing text from screenshots, you MUST filter out non-location content such as:
+- UI elements (buttons, tabs, navigation items like "Home", "Search", "Profile", "Settings", "Add", "Edit", "Delete", "Share", "Save")
+- Timestamps and dates without context
+- Generic action words and labels
+- App interface text and labels  
+- Numbers or codes without location context
+- Social media usernames or handles (e.g., "@lemon_and_orange", "@username")
+- Generic affirmative/negative words ("yes", "no", "maybe")
+- List category headers ("must go", "don't go", "KL travel", "Urban Village")
+- Descriptive phrases that are NOT place names (e.g., "unique architecture", "intricate details", "best to avoid")
+- Instructional text or warnings
+
+ONLY extract items that are clearly ACTUAL PLACES with names:
+- Restaurant names (e.g., "Din Tai Fung", "Ramen Yamadaya")
+- Attraction names (e.g., "Masjid Putra", "Tokyo Tower", "Louvre Museum")
+- Hotel or accommodation names (e.g., "Hilton Hotel", "Grand Hyatt")
+- Shop or store names with specific names (e.g., "Central Market", "Sephora Times Square")
+- Neighborhoods or districts with proper names (e.g., "Georgetown", "Shibuya", "Kampung Baru")
+- Specific locations with addresses that can be searched on a map
+
+ASK YOURSELF: "Can I search for this exact text on Google Maps and find a specific location?"
+If the answer is NO, then DO NOT include it.
+
 When given raw itinerary notes, extract:
-1. Place names (restaurants, attractions, hotels, shops, temples, etc.)
+1. Place names (restaurants, attractions, hotels, shops, temples, etc.) - VERIFY each is actually a searchable location
 2. Local names if included
 3. Category (food, culture, nature, shop, night, photo, accommodation, transport)
 4. Brief description if context is available
@@ -198,26 +221,26 @@ Respond ONLY with valid JSON, no markdown or extra text.`;
         ? getGeminiUrlWithModel(GOOGLE_API_KEY, textExtractionModel)
         : getGeminiUrl(GOOGLE_API_KEY),
       {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: systemPrompt + '\n\n' + userPrompt }]
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: systemPrompt + '\n\n' + userPrompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json'
           }
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-          responseMimeType: 'application/json'
-        }
-      }),
-    });
+        }),
+      });
 
     if (!response.ok) {
       if (response.status === 429) {

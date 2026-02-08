@@ -38,7 +38,7 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
   // Detect potential anchor from accommodations
   const detectAnchor = useCallback(() => {
     const accommodationKeywords = ['hotel', 'hostel', 'airbnb', 'apartment', 'guesthouse', 'resort', 'lodge', 'inn', 'staying'];
-    
+
     for (const day of itinerary) {
       for (const place of day.places) {
         const nameLower = place.name.toLowerCase();
@@ -75,21 +75,21 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
       const newItinerary = [...prev];
       const dayItinerary = { ...newItinerary[dayIndex] };
       const places = [...dayItinerary.places];
-      
+
       const [removed] = places.splice(sourceIdx, 1);
       places.splice(destinationIdx, 0, removed);
-      
+
       dayItinerary.places = places;
       newItinerary[dayIndex] = dayItinerary;
-      
+
       return newItinerary;
     });
   }, []);
 
   const movePlaceBetweenDays = useCallback((
-    sourceDayIndex: number, 
-    destDayIndex: number, 
-    sourceIdx: number, 
+    sourceDayIndex: number,
+    destDayIndex: number,
+    sourceIdx: number,
     destIdx: number
   ) => {
     if (sourceDayIndex === destDayIndex && sourceIdx === destIdx) return;
@@ -98,19 +98,19 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
       const newItinerary = [...prev];
       const sourceDay = { ...newItinerary[sourceDayIndex] };
       const destDay = { ...newItinerary[destDayIndex] };
-      
+
       const sourcePlaces = [...sourceDay.places];
       const destPlaces = [...destDay.places];
-      
+
       const [removed] = sourcePlaces.splice(sourceIdx, 1);
       destPlaces.splice(destIdx, 0, removed);
-      
+
       sourceDay.places = sourcePlaces;
       destDay.places = destPlaces;
-      
+
       newItinerary[sourceDayIndex] = sourceDay;
       newItinerary[destDayIndex] = destDay;
-      
+
       return newItinerary;
     });
   }, []);
@@ -120,17 +120,52 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
       const newItinerary = [...prev];
       const dayItinerary = { ...newItinerary[dayIndex] };
       const places = [...dayItinerary.places];
-      
+
       places.splice(placeIndex, 1);
       dayItinerary.places = places;
       newItinerary[dayIndex] = dayItinerary;
-      
+
       return newItinerary;
     });
   }, []);
 
   const setAsAnchor = useCallback((placeId: string) => {
     setAnchorPlaceId(placeId);
+
+    // Auto-reorder: move anchor place to top of its day
+    setItinerary(prev => {
+      // Find the day and position of the anchor place
+      let anchorDayIndex = -1;
+      let anchorPlaceIndex = -1;
+
+      for (let dayIdx = 0; dayIdx < prev.length; dayIdx++) {
+        const placeIdx = prev[dayIdx].places.findIndex(p => p.id === placeId);
+        if (placeIdx !== -1) {
+          anchorDayIndex = dayIdx;
+          anchorPlaceIndex = placeIdx;
+          break;
+        }
+      }
+
+      // If found and not already at the top, move it
+      if (anchorDayIndex !== -1 && anchorPlaceIndex > 0) {
+        const newItinerary = [...prev];
+        const dayItinerary = { ...newItinerary[anchorDayIndex] };
+        const places = [...dayItinerary.places];
+
+        // Move anchor place to position 0
+        const [anchorPlace] = places.splice(anchorPlaceIndex, 1);
+        places.unshift(anchorPlace);
+
+        dayItinerary.places = places;
+        newItinerary[anchorDayIndex] = dayItinerary;
+
+        return newItinerary;
+      }
+
+      return prev;
+    });
+
     toast.success('Anchor point set! Routes will start and end here.');
   }, []);
 
@@ -187,7 +222,7 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
 
       // Invalidate query to refresh data
       queryClient.invalidateQueries({ queryKey: getTripDetailQueryKey(tripId) });
-      
+
       toast.success('Changes saved successfully!');
       setBaselineSnapshot(toSnapshot(itinerary, anchorPlaceId));
       setIsEditMode(false);

@@ -57,7 +57,7 @@ export default function TripDetailPage() {
       return value;
     });
   }, []);
-  
+
   // Fetch trip from database
   const { data: trip, isLoading } = useTripDetail(tripId);
 
@@ -116,7 +116,7 @@ export default function TripDetailPage() {
   useEffect(() => {
     setFocusedPlaceId(null);
   }, [activeDay, isEditMode]);
-  
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3">
@@ -125,7 +125,7 @@ export default function TripDetailPage() {
       </div>
     );
   }
-  
+
   if (!trip) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -162,7 +162,7 @@ export default function TripDetailPage() {
   const fallbackTransform = typeof activeSnapPoint === 'number'
     ? `translate3d(0, ${(1 - activeSnapPoint) * 100}vh, 0)`
     : undefined;
-  
+
   // Get all places for anchor selection
   const allPlaces = itinerary.flatMap(day => day.places);
 
@@ -228,6 +228,9 @@ export default function TripDetailPage() {
       navigate('/auth');
       return;
     }
+
+    // Auto-minimize dropdown to reveal map/content behind it
+    handleSnapPointChange(snapPoints[0]);
     setAddToItineraryOpen(true);
   };
 
@@ -248,7 +251,7 @@ export default function TripDetailPage() {
       navigate('/auth');
       return;
     }
-    
+
     if (!tripId || !isOwner) {
       toast.error('You can only add days to your own trips');
       return;
@@ -257,11 +260,11 @@ export default function TripDetailPage() {
     setIsAddingDay(true);
     try {
       const nextDayNumber = itinerary.length + 1;
-      
+
       // Create the new day
-      await createDayItinerary.mutateAsync({ 
-        tripId, 
-        dayNumber: nextDayNumber 
+      await createDayItinerary.mutateAsync({
+        tripId,
+        dayNumber: nextDayNumber
       });
 
       if (!AUTH_DISABLED) {
@@ -271,10 +274,10 @@ export default function TripDetailPage() {
           .update({ duration: nextDayNumber })
           .eq('id', tripId);
       }
-      
+
       // Invalidate queries
       await queryClient.invalidateQueries({ queryKey: ['trip-detail', tripId] });
-      
+
       setActiveDay(nextDayNumber);
       toast.success(`Day ${nextDayNumber} added!`);
     } catch (error) {
@@ -394,12 +397,12 @@ export default function TripDetailPage() {
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-background">
-        <div
-          className={cn(
-            'absolute inset-0 z-0',
-            isExpanded || isDraggingTimeline ? 'pointer-events-none' : 'pointer-events-auto'
-          )}
-        >
+      <div
+        className={cn(
+          'absolute inset-0 z-0',
+          isExpanded || isDraggingTimeline ? 'pointer-events-none' : 'pointer-events-auto'
+        )}
+      >
         <MapPlaceholder
           destination={trip.destination}
           placesCount={mapPlaces.length}
@@ -414,13 +417,13 @@ export default function TripDetailPage() {
       <header className="pointer-events-auto absolute left-0 right-0 top-0 z-50 px-4 pt-4">
         <div className="flex items-center justify-between gap-3 rounded-2xl bg-background/90 px-3 py-2 shadow-lg backdrop-blur">
           <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleNavigateBack}
-                className="rounded-full"
-                aria-label="Go back"
-              >
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleNavigateBack}
+              className="rounded-full"
+              aria-label="Go back"
+            >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
@@ -455,15 +458,15 @@ export default function TripDetailPage() {
         </div>
       </header>
 
-        <BottomSheet
-          defaultOpen
-          modal={false}
-          dismissible={false}
-          snapPoints={snapPoints}
-          activeSnapPoint={activeSnapPoint}
-          setActiveSnapPoint={handleSnapPointChange}
-          shouldScaleBackground={false}
-        >
+      <BottomSheet
+        defaultOpen
+        modal={false}
+        dismissible={false}
+        snapPoints={snapPoints}
+        activeSnapPoint={activeSnapPoint}
+        setActiveSnapPoint={handleSnapPointChange}
+        shouldScaleBackground={false}
+      >
         <BottomSheetContent
           showOverlay
           aria-label="Trip itinerary sheet"
@@ -526,16 +529,27 @@ export default function TripDetailPage() {
 
               <div className="mt-4 flex items-center gap-2">
                 <Button
-                  onClick={handlePrimaryAction}
+                  onClick={isEditMode ? saveChanges : handlePrimaryAction}
                   className={cn(
                     'flex-1 gap-2 rounded-xl',
                     isOwner && !isEditMode && 'bg-violet-600 hover:bg-violet-700',
-                    !isOwner && 'bg-violet-600 hover:bg-violet-700'
+                    !isOwner && 'bg-violet-600 hover:bg-violet-700',
+                    isEditMode && 'bg-green-600 hover:bg-green-700'
                   )}
-                  variant={isEditMode ? 'outline' : 'default'}
+                  variant="default"
+                  disabled={isEditMode && isSaving}
                 >
-                  {isOwner ? <Pencil className="h-4 w-4" /> : <ListPlus className="h-4 w-4" />}
-                  {isOwner ? (isEditMode ? 'Continue editing' : 'Modify itinerary') : 'Add to itinerary'}
+                  {isEditMode ? (
+                    <>
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Save Changes
+                    </>
+                  ) : (
+                    <>
+                      {isOwner ? <Pencil className="h-4 w-4" /> : <ListPlus className="h-4 w-4" />}
+                      {isOwner ? 'Modify itinerary' : 'Add to itinerary'}
+                    </>
+                  )}
                 </Button>
                 <Button
                   variant="outline"
@@ -751,7 +765,7 @@ export default function TripDetailPage() {
         title={trip.title}
         url={shareUrl}
       />
-      
+
       <AddToItineraryDialog
         open={addToItineraryOpen}
         onOpenChange={setAddToItineraryOpen}

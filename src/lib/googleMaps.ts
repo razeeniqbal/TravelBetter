@@ -47,10 +47,8 @@ export function getGoogleMapsPlaceUrl(place: GooglePlaceCandidate): string {
 }
 
 export function getGoogleMapsReviewUrl(place: GooglePlaceCandidate): string {
-  if (place.placeId) {
-    return `https://www.google.com/maps/place/?q=place_id:${place.placeId}`;
-  }
-
+  // Use the same URL format as getGoogleMapsPlaceUrl to avoid displaying place_ID text
+  // This ensures the location opens correctly instead of showing the raw place ID
   return getGoogleMapsPlaceUrl(place);
 }
 

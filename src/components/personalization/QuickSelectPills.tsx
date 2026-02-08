@@ -142,8 +142,17 @@ export function QuickSelectPills({
                 </Button>
                 <Input
                   type="number"
+                  inputMode="numeric"
                   value={tripDays}
-                  onChange={(e) => onChangeDays(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '') {
+                      onChangeDays(1); // Reset to minimum on clear
+                    } else {
+                      onChangeDays(Math.max(1, Math.min(30, parseInt(val) || 1)));
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()} // Select all on focus for easy editing
                   className="w-16 text-center h-8"
                   min={1}
                   max={30}

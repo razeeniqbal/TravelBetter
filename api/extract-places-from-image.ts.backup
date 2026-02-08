@@ -1,0 +1,234 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getGeminiUrl, parseGeminiJson } from './_shared/gemini.js';
+
+interface ExtractedPlace {
+  name: string;
+  nameLocal?: string;
+  category: string;
+  description?: string;
+  tips?: string[];
+  latitude?: number;
+  longitude?: number;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { image, destination } = req.body;
+
+    if (!image) {
+      return res.status(400).json({ error: 'Image data is required' });
+    }
+
+    const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+    if (!GOOGLE_API_KEY) {
+      console.error('GOOGLE_API_KEY is not configured');
+      return res.status(500).json({ error: 'AI service not configured' });
+    }
+
+    console.log('Extracting places from image for destination:', destination);
+
+    const systemPrompt = `You are a travel assistant that extracts place names and travel information from images.
+
+When analyzing travel-related images (screenshots of itineraries, maps, social media posts, etc.), extract:
+1. Place names (restaurants, attractions, hotels, shops, temples, etc.)
+2. Local names if visible (in original script)
+3. Category (food, culture, nature, shop, night, photo, accommodation, transport)
+4. Brief description if context is available
+5. Any tips or recommendations mentioned
+6. Geographic coordinates (latitude and longitude in decimal degrees)
+7. If coordinates are unknown, set latitude and longitude to null
+
+You MUST respond with a valid JSON object in this exact format:
+{
+  "places": [
+    {
+      "name": "Place name in English",
+      "nameLocal": "Local name if visible",
+      "category": "one of: food, culture, nature, shop, night, photo, accommodation, transport",
+      "description": "Brief description",
+      "tips": ["tip1", "tip2"],
+      "latitude": 35.0116,
+      "longitude": 135.7681
+    }
+  ],
+  "summary": "Brief summary of what was found in the image"
+}`;
+
+    const userPrompt = `Extract all places and travel recommendations from this image.${destination ? ` The destination is ${destination}.` : ''} Focus on identifying specific named locations, restaurants, attractions, and any travel tips visible.
+
+Respond ONLY with valid JSON, no markdown or extra text.`;
+
+    // Prepare image data for Gemini
+    const imageData = image.startsWith('data:')
+      ? image.split(',')[1]
+      : image;
+
+    const mimeType = image.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+
+    // Call Google Gemini API with vision
+    const response = await fetch(getGeminiUrl(GOOGLE_API_KEY), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: systemPrompt + '\n\n' + userPrompt },
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: imageData
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 2048,
+          responseMimeType: 'application/json'
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
+      }
+    }
+    const errorText = await step1Response.text();
+    console.error('Google AI error:', step1Response.status, errorText);
+    return res.status(500).json({ error: 'Failed to analyze image' });
+  }
+
+    const step1Data = await step1Response.json();
+  console.log('Step 1 AI response received');
+
+  // Extract the response text from Gemini format
+  const step1ResponseText = step1Data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!step1ResponseText) {
+    console.error('Unexpected response format:', JSON.stringify(step1Data));
+    return res.status(200).json({
+      error: 'Failed to extract places from image',
+      places: [],
+      status: 'failed',
+      processedCount: 0,
+      failedCount: 1,
+      items: [
+        {
+          filename: 'upload-image',
+          status: 'failed',
+          error: 'Failed to extract places from image',
+        },
+      ],
+    });
+  }
+
+  // Parse Step 1 results
+  let step1Result: { validated_locations?: any[]; filtered_out?: any[] };
+  try {
+    step1Result = parseGeminiJson(step1ResponseText);
+    console.log('Step 1 validated locations:', step1Result.validated_locations?.length || 0);
+    console.log('Step 1 filtered out:', step1Result.filtered_out?.length || 0);
+  } catch (parseError) {
+    console.error('Failed to parse Step 1 response:', step1ResponseText);
+    return res.status(200).json({
+      error: 'Failed to parse AI response',
+      places: [],
+      status: 'failed',
+      processedCount: 0,
+      failedCount: 1,
+    });
+  }
+
+  // STEP 2: Semantic Reasoning & Final Validation
+  console.log('Step 2: Applying semantic filters...');
+  const validatedLocations = (step1Result.validated_locations || []).filter((loc: any) => {
+    const name = loc.name.toLowerCase();
+
+    // Programmatic filters for common false positives
+    const invalidPatterns = [
+      /^(yes|no|maybe)$/i,
+      /^@/,  // usernames
+      /^(must go|don't go|don't|avoid|visit)$/i,
+      /^(kl travel|travel|itinerary|tips)$/i,
+      /^(good|bad|best|worst)$/i,
+      // Filter descriptions that aren't place names
+      /^(unique architecture|intricate details|best to avoid|disturbing|residents)$/i,
+      /^(urban village)$/i, // When it's a category label, not the place "Kampung Baru"
+    ];
+
+    for (const pattern of invalidPatterns) {
+      if (pattern.test(name)) {
+        console.log(`Filtered out: "${loc.name}" - matches pattern ${pattern}`);
+        return false;
+      }
+    }
+
+    // Require high confidence for names that weren't visually confirmed
+    if (!loc.visually_confirmed && loc.confidence === 'low') {
+      console.log(`Filtered out: "${loc.name}" - low confidence without visual confirmation`);
+      return false;
+    }
+
+    // Additional validation: must be at least 2 characters and not purely numeric
+    if (name.length < 2 || /^\d+$/.test(name)) {
+      console.log(`Filtered out: "${loc.name}" - too short or purely numeric`);
+      return false;
+    }
+
+    return true;
+  });
+
+  console.log(`Final validated locations after Step 2: ${validatedLocations.length}`);
+
+  // Convert validated locations to ExtractedPlace format
+  const places: ExtractedPlace[] = validatedLocations.map((loc: any) => ({
+    name: loc.name,
+    category: 'attraction', // Default category, could be enhanced
+    description: loc.reasoning || undefined,
+    latitude: null,
+    longitude: null,
+  }));
+
+  console.log(`Extracted ${places.length} places from image after multi-step filtering`);
+
+  return res.status(200).json({
+    places,
+    summary: `Found ${places.length} validated locations`,
+    success: true,
+    status: 'ready',
+    processedCount: 1,
+    failedCount: 0,
+    items: [
+      {
+        filename: 'upload-image',
+        status: 'processed',
+        extractedText: `Found ${places.length} validated locations`,
+      },
+    ],
+  });
+
+} catch (error) {
+  console.error('Error processing image:', error);
+  return res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+}
+}

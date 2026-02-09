@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { DraggableTimeline } from '@/components/trip/DraggableTimeline';
@@ -24,6 +24,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { AUTH_DISABLED } from '@/lib/flags';
 import { api } from '@/lib/api';
 import type { Place } from '@/types/trip';
+import {
+  TRIP_DETAIL_SHEET_STATE,
+  TRIP_DETAIL_SNAP_POINTS,
+  resolveTripDetailSheetState,
+} from '@/pages/tripDetailSheetState';
 
 export default function TripDetailPage() {
   const { tripId } = useParams();
@@ -45,9 +50,13 @@ export default function TripDetailPage() {
     commuteDistanceMeters?: number;
   }>>({});
   const [shareRestoreSnapPoint, setShareRestoreSnapPoint] = useState<number | string | null>(null);
-  const snapPoints = useMemo(() => [0.2, 0.55, 0.9], []);
+  const snapPoints = [...TRIP_DETAIL_SNAP_POINTS];
   const [activeSnapPoint, setActiveSnapPoint] = useState<number | string | null>(snapPoints[0]);
   const [showSwipeHint, setShowSwipeHint] = useState(true);
+  const [markerPreviewActive, setMarkerPreviewActive] = useState(false);
+  const latestMarkerSelectionRef = useRef(0);
+  const itineraryListContainerRef = useRef<HTMLDivElement | null>(null);
+  const [selectionScrollTick, setSelectionScrollTick] = useState(0);
 
   const handleSnapPointChange = useCallback((value: number | string | null) => {
     setActiveSnapPoint((prev) => {
@@ -115,7 +124,46 @@ export default function TripDetailPage() {
 
   useEffect(() => {
     setFocusedPlaceId(null);
+    setMarkerPreviewActive(false);
   }, [activeDay, isEditMode]);
+
+  const sheetState = resolveTripDetailSheetState(activeSnapPoint, snapPoints);
+  const isCollapsed = sheetState === TRIP_DETAIL_SHEET_STATE.minimized;
+  const isExpanded = sheetState === TRIP_DETAIL_SHEET_STATE.expanded;
+
+  useEffect(() => {
+    if (!focusedPlaceId) return;
+
+    const container = itineraryListContainerRef.current;
+    if (!container) return;
+
+    const syncSelectionIntoView = () => {
+      const nextContainer = itineraryListContainerRef.current;
+      if (!nextContainer) return;
+
+      const target = nextContainer.querySelector<HTMLElement>(`[data-place-id="${focusedPlaceId}"]`);
+      if (!target) return;
+
+      const containerRect = nextContainer.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const nextTop = nextContainer.scrollTop + (targetRect.top - containerRect.top) - 8;
+
+      nextContainer.scrollTo({
+        top: Math.max(0, nextTop),
+        behavior: 'smooth',
+      });
+    };
+
+    let frameTwo = 0;
+    const frameOne = requestAnimationFrame(() => {
+      frameTwo = requestAnimationFrame(syncSelectionIntoView);
+    });
+
+    return () => {
+      cancelAnimationFrame(frameOne);
+      if (frameTwo) cancelAnimationFrame(frameTwo);
+    };
+  }, [focusedPlaceId, activeDay, activeSnapPoint, isEditMode, selectionScrollTick]);
 
   if (isLoading) {
     return (
@@ -141,8 +189,6 @@ export default function TripDetailPage() {
   const totalPlaces = itinerary.reduce((acc, day) => acc + day.places.length, 0);
   const totalWalking = currentDayItinerary?.places.reduce((acc, p) => acc + (p.walkingTimeFromPrevious || 0), 0) || 0;
   const totalWalkingKm = (totalWalking * 0.08).toFixed(1);
-  const isCollapsed = activeSnapPoint === snapPoints[0];
-  const isExpanded = activeSnapPoint === snapPoints[2];
   const applyTimingOverride = (place: Place): Place => {
     const override = timingOverrides[place.id];
     if (!override) return place;
@@ -159,21 +205,59 @@ export default function TripDetailPage() {
   const previewPlaces = (currentDayItinerary?.places || []).map(applyTimingOverride).slice(0, 3);
   const previewRemaining = (currentDayItinerary?.places.length || 0) - previewPlaces.length;
   const mapPlaces = (currentDayItinerary?.places || []).map(applyTimingOverride);
-  const fallbackTransform = typeof activeSnapPoint === 'number'
-    ? `translate3d(0, ${(1 - activeSnapPoint) * 100}vh, 0)`
-    : undefined;
+  const markerPreviewPlaces = mapPlaces;
 
+  const parseClockToMinutes = (value?: string) => {
+    if (!value) return null;
+    const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!match) return null;
+
+    let hour = Number(match[1]) % 12;
+    const minute = Number(match[2]);
+    const period = match[3].toUpperCase();
+
+    if (period === 'PM') hour += 12;
+
+    return (hour * 60) + minute;
+  };
+
+  const formatMinutesToClock = (totalMinutes: number) => {
+    const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+    const hour24 = Math.floor(normalized / 60);
+    const minute = normalized % 60;
+    const period = hour24 < 12 ? 'AM' : 'PM';
+    const hour12 = ((hour24 + 11) % 12) + 1;
+    return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+  };
+
+  const buildDisplayTimes = (places: Place[]) => {
+    let cursorMinutes = 9 * 60;
+
+    return places.map((place, index) => {
+      const parsedArrival = parseClockToMinutes(place.arrivalTime);
+      if (parsedArrival !== null) {
+        cursorMinutes = parsedArrival;
+      }
+
+      const arrival = formatMinutesToClock(cursorMinutes);
+      const stayMinutes = place.stayDurationMinutes || place.duration || 60;
+      const nextPlace = places[index + 1];
+      const commuteToNext = nextPlace?.commuteDurationMinutes ?? nextPlace?.walkingTimeFromPrevious ?? 0;
+
+      cursorMinutes += stayMinutes + commuteToNext;
+
+      return arrival;
+    });
+  };
+
+  const previewDisplayTimes = buildDisplayTimes(previewPlaces);
+  const markerPreviewDisplayTimes = buildDisplayTimes(markerPreviewPlaces);
   // Get all places for anchor selection
   const allPlaces = itinerary.flatMap(day => day.places);
 
   // Count sources for legend
   const userPlacesCount = allPlaces.filter(p => p.source === 'user').length;
   const aiPlacesCount = allPlaces.filter(p => p.source === 'ai').length;
-
-  const getTimeForIndex = (idx: number) => {
-    const startHour = 9 + Math.floor(idx * 1.5);
-    return `${startHour}:00 ${startHour < 12 ? 'AM' : 'PM'}`;
-  };
 
   const handleShare = () => {
     if (isEditMode && hasUnsavedChanges) {
@@ -230,11 +314,14 @@ export default function TripDetailPage() {
     }
 
     // Auto-minimize dropdown to reveal map/content behind it
+    setMarkerPreviewActive(false);
     handleSnapPointChange(snapPoints[0]);
     setAddToItineraryOpen(true);
   };
 
   const handlePrimaryAction = () => {
+    setMarkerPreviewActive(false);
+
     if (isOwner) {
       if (!isEditMode) {
         toggleEditMode();
@@ -279,6 +366,7 @@ export default function TripDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ['trip-detail', tripId] });
 
       setActiveDay(nextDayNumber);
+      setMarkerPreviewActive(false);
       toast.success(`Day ${nextDayNumber} added!`);
     } catch (error) {
       console.error('Error adding day:', error);
@@ -351,8 +439,22 @@ export default function TripDetailPage() {
   };
 
   const handleMapMarkerTap = (place: Place) => {
-    setFocusedPlaceId(place.id);
-    handleSnapPointChange(snapPoints[1]);
+    latestMarkerSelectionRef.current += 1;
+    const selectionId = latestMarkerSelectionRef.current;
+    const placeIndex = mapPlaces.findIndex((candidate) => candidate.id === place.id);
+    const shouldExpandToRevealSelection = placeIndex >= previewPlaces.length;
+
+    setFocusedPlaceId((current) => {
+      if (selectionId !== latestMarkerSelectionRef.current) {
+        return current;
+      }
+
+      return place.id;
+    });
+    setMarkerPreviewActive(true);
+    setSelectionScrollTick((tick) => tick + 1);
+
+    handleSnapPointChange(shouldExpandToRevealSelection ? snapPoints[2] : snapPoints[1]);
   };
 
   const handleTimingChange = async (
@@ -471,13 +573,16 @@ export default function TripDetailPage() {
           showOverlay
           aria-label="Trip itinerary sheet"
           aria-describedby={undefined}
-          style={fallbackTransform ? { transform: fallbackTransform } : undefined}
         >
           <BottomSheetTitle className="sr-only">Trip itinerary sheet</BottomSheetTitle>
           <BottomSheetDescription className="sr-only">
             View and manage the daily itinerary for this trip.
           </BottomSheetDescription>
-          <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            className="relative flex min-h-0 flex-1 flex-col"
+            data-testid="trip-itinerary-sheet"
+            data-sheet-state={sheetState}
+          >
             {showSwipeHint && isCollapsed && (
               <div
                 aria-hidden
@@ -487,7 +592,7 @@ export default function TripDetailPage() {
                 <span>Swipe up to view itinerary</span>
               </div>
             )}
-            <div className="px-4 pb-4 pt-2">
+            <div className="sticky top-0 z-20 border-b border-border/60 bg-background/95 px-4 pb-4 pt-2 backdrop-blur supports-[backdrop-filter]:bg-background/90">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Itinerary</p>
@@ -527,65 +632,67 @@ export default function TripDetailPage() {
                 </div>
               )}
 
-              <div className="mt-4 flex items-center gap-2">
-                <Button
-                  onClick={isEditMode ? saveChanges : handlePrimaryAction}
-                  className={cn(
-                    'flex-1 gap-2 rounded-xl',
-                    isOwner && !isEditMode && 'bg-violet-600 hover:bg-violet-700',
-                    !isOwner && 'bg-violet-600 hover:bg-violet-700',
-                    isEditMode && 'bg-green-600 hover:bg-green-700'
-                  )}
-                  variant="default"
-                  disabled={isEditMode && isSaving}
-                >
-                  {isEditMode ? (
-                    <>
-                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Save Changes
-                    </>
-                  ) : (
-                    <>
-                      {isOwner ? <Pencil className="h-4 w-4" /> : <ListPlus className="h-4 w-4" />}
-                      {isOwner ? 'Modify itinerary' : 'Add to itinerary'}
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-10 w-10 rounded-xl"
-                  onClick={handleShare}
-                  aria-label="Share trip"
-                >
-                  <Share2 className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2 rounded-full"
-                  onClick={() => {
-                    const firstPlace = mapPlaces[0];
-                    if (!firstPlace) {
-                      toast.info('No place selected for map details');
-                      return;
-                    }
-                    handleViewOnMap(firstPlace);
-                  }}
-                >
-                  View on map
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2 rounded-full"
-                  onClick={handleOpenRoute}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Open Route
-                </Button>
+              <div data-testid="itinerary-primary-actions">
+                <div className="mt-4 flex items-center gap-2">
+                  <Button
+                    onClick={isEditMode ? saveChanges : handlePrimaryAction}
+                    className={cn(
+                      'flex-1 gap-2 rounded-xl',
+                      isOwner && !isEditMode && 'bg-violet-600 hover:bg-violet-700',
+                      !isOwner && 'bg-violet-600 hover:bg-violet-700',
+                      isEditMode && 'bg-green-600 hover:bg-green-700'
+                    )}
+                    variant="default"
+                    disabled={isEditMode && isSaving}
+                  >
+                    {isEditMode ? (
+                      <>
+                        {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Save Changes
+                      </>
+                    ) : (
+                      <>
+                        {isOwner ? <Pencil className="h-4 w-4" /> : <ListPlus className="h-4 w-4" />}
+                        {isOwner ? 'Modify itinerary' : 'Add to itinerary'}
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 rounded-xl"
+                    onClick={handleShare}
+                    aria-label="Share trip"
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 rounded-full"
+                    onClick={() => {
+                      const firstPlace = mapPlaces[0];
+                      if (!firstPlace) {
+                        toast.info('No place selected for map details');
+                        return;
+                      }
+                      handleViewOnMap(firstPlace);
+                    }}
+                  >
+                    View on map
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 rounded-full"
+                    onClick={handleOpenRoute}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Open Route
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -596,7 +703,10 @@ export default function TripDetailPage() {
                     {itinerary.map((day) => (
                       <button
                         key={day.day}
-                        onClick={() => setActiveDay(day.day)}
+                        onClick={() => {
+                          setActiveDay(day.day);
+                          setMarkerPreviewActive(false);
+                        }}
                         className={cn(
                           'rounded-full px-4 py-2 text-sm font-medium transition-all',
                           activeDay === day.day
@@ -657,8 +767,29 @@ export default function TripDetailPage() {
                   </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto px-4 pb-24">
-                  {isExpanded ? (
+                <div
+                  ref={itineraryListContainerRef}
+                  className="flex-1 overflow-y-auto px-4 pb-24 pt-2"
+                  data-vaul-no-drag
+                >
+                  {markerPreviewActive && markerPreviewPlaces.length > 0 ? (
+                    <div className="space-y-3">
+                      {markerPreviewPlaces.map((place, index) => (
+                        <TimelinePlace
+                          key={place.id}
+                          place={place}
+                          index={index + 1}
+                          time={markerPreviewDisplayTimes[index]}
+                          isLast={index === markerPreviewPlaces.length - 1}
+                          isHighlighted={place.id === focusedPlaceId}
+                          isTimingEditable={isOwner}
+                          onTimingChange={handleTimingChange}
+                          onViewMap={handleViewOnMap}
+                          onClick={() => handleOpenPlaceReview(place)}
+                        />
+                      ))}
+                    </div>
+                  ) : isExpanded ? (
                     isEditMode || (currentDayItinerary && currentDayItinerary.places.length > 0) ? (
                       <DraggableTimeline
                         days={itinerary}
@@ -694,7 +825,7 @@ export default function TripDetailPage() {
                           key={place.id}
                           place={place}
                           index={index + 1}
-                          time={getTimeForIndex(index)}
+                          time={previewDisplayTimes[index]}
                           isLast={index === previewPlaces.length - 1}
                           isHighlighted={place.id === focusedPlaceId}
                           isTimingEditable={isOwner}

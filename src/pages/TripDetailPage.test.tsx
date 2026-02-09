@@ -79,6 +79,11 @@ const addPlaceMutationState = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
 }));
 
+const deleteTripMutationState = vi.hoisted(() => ({
+  mutateAsync: vi.fn(),
+  isPending: false,
+}));
+
 const clickHandlers = vi.hoisted(() => ({
   timeline: undefined as undefined | (() => void),
   draggable: undefined as undefined | (() => void),
@@ -345,6 +350,10 @@ vi.mock('@/hooks/useRemixTrip', () => ({
   useRemixTrip: () => ({ mutateAsync: vi.fn() }),
 }));
 
+vi.mock('@/hooks/useTripMutations', () => ({
+  useDeleteTrip: () => deleteTripMutationState,
+}));
+
 vi.mock('@/hooks/useUserTrips', () => ({
   useCreateDayItinerary: () => ({ mutateAsync: vi.fn() }),
   useTripDays: () => ({ data: tripDaysState }),
@@ -387,6 +396,9 @@ describe('TripDetailPage', () => {
     mapHandlers.markerTapAt = undefined;
     addPlaceMutationState.mutateAsync.mockReset();
     addPlaceMutationState.mutateAsync.mockResolvedValue({ dayItineraryId: 'day-1-id', placeId: 'place-1' });
+    deleteTripMutationState.mutateAsync.mockReset();
+    deleteTripMutationState.mutateAsync.mockResolvedValue('trip-1');
+    deleteTripMutationState.isPending = false;
   });
 
   it('shows consistent loading and empty states', async () => {
@@ -510,6 +522,22 @@ describe('TripDetailPage', () => {
     expect(navigateMock).not.toHaveBeenCalled();
 
     confirmSpy.mockRestore();
+  });
+
+  it('opens review page for currently selected day', async () => {
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    dragSheetToExpanded();
+    fireEvent.click(await screen.findByRole('button', { name: /day 2/i }));
+    fireEvent.click(screen.getByRole('button', { name: /review selected day/i }));
+
+    expect(navigateMock).toHaveBeenCalledWith('/trip/trip-1/review?day=2');
   });
 
   it('keeps baseline summary and actions visible for the preview-capable sheet states', async () => {

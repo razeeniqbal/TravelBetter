@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Place } from '@/types/trip';
 import { Star, Info, Clock, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,14 +27,33 @@ export function TimelinePlace({
   isHighlighted = false,
 }: TimelinePlaceProps) {
   const stayDuration = place.stayDurationMinutes || place.duration || 60;
-  const arrival = place.arrivalTime || time || 'Anytime';
+  const [draftStayMinutes, setDraftStayMinutes] = useState(String(stayDuration));
+
+  useEffect(() => {
+    setDraftStayMinutes(String(stayDuration));
+  }, [place.id, stayDuration]);
+
+  const arrival = time || place.arrivalTime || 'Anytime';
   const commuteMinutes = place.commuteDurationMinutes || place.walkingTimeFromPrevious;
   const commuteMeters = place.commuteDistanceMeters;
   const tags = (place.tags || []).filter(Boolean);
+  const parsedDraftStay = Number(draftStayMinutes);
+  const isDraftValid = Number.isFinite(parsedDraftStay) && parsedDraftStay >= 1;
+  const hasPendingTimingChange = isDraftValid && parsedDraftStay !== stayDuration;
+
+  const saveStayDuration = () => {
+    if (!hasPendingTimingChange) return;
+
+    onTimingChange?.(place.id, {
+      arrivalTime: place.arrivalTime || undefined,
+      stayDurationMinutes: parsedDraftStay,
+    });
+  };
 
   return (
     <div
       className="relative flex gap-4"
+      data-place-id={place.id}
       onClick={onClick}
       role="button"
       tabIndex={0}
@@ -128,21 +148,38 @@ export function TimelinePlace({
           <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
             <span>Stay:</span>
             {isTimingEditable ? (
-              <input
-                type="number"
-                min={5}
-                max={720}
-                value={stayDuration}
-                className="h-7 w-20 rounded-md border border-border bg-background px-2 text-foreground"
-                onClick={(event) => event.stopPropagation()}
-                onChange={(event) => {
-                  const value = Number(event.target.value) || stayDuration;
-                  onTimingChange?.(place.id, {
-                    arrivalTime: place.arrivalTime || undefined,
-                    stayDurationMinutes: value,
-                  });
-                }}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={draftStayMinutes}
+                  className="h-7 w-20 rounded-md border border-border bg-background px-2 text-foreground"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      saveStayDuration();
+                    }
+                  }}
+                  onChange={(event) => {
+                    setDraftStayMinutes(event.target.value);
+                  }}
+                />
+                {hasPendingTimingChange && (
+                  <button
+                    type="button"
+                    className="inline-flex h-7 items-center rounded-md border border-primary/40 bg-primary/10 px-2 text-[11px] font-medium text-primary hover:bg-primary/20"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      saveStayDuration();
+                    }}
+                  >
+                    Save
+                  </button>
+                )}
+              </div>
             ) : (
               <span>{stayDuration} min</span>
             )}

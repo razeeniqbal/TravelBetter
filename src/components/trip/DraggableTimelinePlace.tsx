@@ -93,6 +93,7 @@ export function DraggableTimelinePlace({
     <div 
       ref={setNodeRef} 
       style={style}
+      data-place-id={place.id}
       className={cn(
         'relative flex gap-4',
         isDragging && 'z-50 opacity-80'
@@ -132,6 +133,7 @@ export function DraggableTimelinePlace({
             <div 
               {...attributes} 
               {...listeners}
+              data-vaul-no-drag
               className="touch-none flex cursor-grab items-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
               aria-label={`Drag ${place.name}`}
             >

@@ -14,7 +14,7 @@ import { BottomSheet, BottomSheetContent, BottomSheetDescription, BottomSheetTit
 import { TimelinePlace } from '@/components/trip/TimelinePlace';
 import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getGoogleMapsPlaceUrl, getGoogleMapsReviewUrl, getGoogleMapsRouteUrl } from '@/lib/googleMaps';
+import { getGoogleMapsPlaceUrl, getGoogleMapsRouteUrl } from '@/lib/googleMaps';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTripDetail } from '@/hooks/useTripDetail';
@@ -489,13 +489,32 @@ export default function TripDetailPage() {
     navigate(`/trip/${tripId}/review`);
   };
 
-  const handleOpenPlaceReview = (place: Place) => {
-    const reviewUrl = getGoogleMapsReviewUrl({
-      placeId: place.placeId,
-      displayName: place.displayName,
-      name: place.name,
-    });
-    window.open(reviewUrl, '_blank', 'noopener,noreferrer');
+  const handleOpenPlaceDetails = (place: Place) => {
+    if (!tripId) return;
+
+    const query = new URLSearchParams();
+    if (place.placeId) query.set('providerPlaceId', place.placeId);
+
+    const displayName = place.displayName || place.name;
+    if (displayName) {
+      query.set('displayName', displayName);
+      query.set('queryText', displayName);
+    }
+
+    if (trip.destination) {
+      query.set('destinationContext', trip.destination);
+    }
+
+    if (typeof place.coordinates?.lat === 'number') {
+      query.set('lat', String(place.coordinates.lat));
+    }
+
+    if (typeof place.coordinates?.lng === 'number') {
+      query.set('lng', String(place.coordinates.lng));
+    }
+
+    const queryString = query.toString();
+    navigate(`/trip/${tripId}/place/${place.id}${queryString ? `?${queryString}` : ''}`);
   };
 
   const handleExpandPlaceTiming = (place: Place) => {
@@ -925,7 +944,7 @@ export default function TripDetailPage() {
                           isHighlighted={place.id === focusedPlaceId}
                           isTimingEditable={isOwner}
                           onTimingChange={handleTimingChange}
-                          onInfoClick={handleOpenPlaceReview}
+                          onInfoClick={handleOpenPlaceDetails}
                           onViewMap={handleViewOnMap}
                           onClick={() => handleExpandPlaceTiming(place)}
                         />
@@ -942,7 +961,7 @@ export default function TripDetailPage() {
                       onRemove={removePlace}
                       onSetAnchor={setAsAnchor}
                       onPlaceClick={handleExpandPlaceTiming}
-                      onPlaceInfoClick={handleOpenPlaceReview}
+                      onPlaceInfoClick={handleOpenPlaceDetails}
                       onRemoveDay={handleRemoveDay}
                       onDragStateChange={setIsDraggingTimeline}
                     />

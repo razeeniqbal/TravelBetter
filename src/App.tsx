@@ -14,6 +14,7 @@ import PlaceDetailPage from "./pages/PlaceDetailPage";
 import SearchPage from "./pages/SearchPage";
 import ExplorePage from "./pages/ExplorePage";
 import ReviewTripPage from "./pages/ReviewTripPage";
+import TripPlaceDetailsPage from "./pages/TripPlaceDetailsPage";
 import TripsPage from "./pages/TripsPage";
 import AuthPage from "./pages/AuthPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -39,6 +40,7 @@ const App = () => (
             ) : (
               <Route path="/auth" element={<AuthPage />} />
             )}
+            <Route path="/trip/:tripId/place/:placeId" element={<TripPlaceDetailsPage />} />
             <Route path="/trip/:tripId" element={<TripDetailPage />} />
             <Route path="/trip/:tripId/review" element={
               <RequireAuth>

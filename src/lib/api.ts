@@ -3,6 +3,8 @@
 import type {
   ItineraryDraftSaveRequest,
   ItineraryDraftSaveResponse,
+  PlaceDetailsRequest,
+  PlaceDetailsResponse,
   MapLinkResponse,
   ParseItineraryResponse,
   PlaceSearchRequest,
@@ -339,6 +341,19 @@ export const api = {
     fetchApi<PlaceReviewsResponse>('place-reviews', {
       method: 'GET',
       query: { placeId, limit },
+    }),
+
+  getPlaceDetails: (request: PlaceDetailsRequest) =>
+    fetchApi<PlaceDetailsResponse>('place-details', {
+      method: 'GET',
+      query: {
+        providerPlaceId: request.providerPlaceId,
+        queryText: request.queryText,
+        destinationContext: request.destinationContext,
+        lat: request.lat,
+        lng: request.lng,
+        reviewLimit: request.reviewLimit,
+      },
     }),
 
   getPlaceMapLink: (placeId: string) =>

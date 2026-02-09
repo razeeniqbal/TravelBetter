@@ -226,6 +226,7 @@ export function DraggableTimelinePlace({
               <button
                 type="button"
                 className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted"
+                aria-label={`View place details for ${place.name}`}
                 onClick={(event) => {
                   event.stopPropagation();
                   onInfoClick?.();

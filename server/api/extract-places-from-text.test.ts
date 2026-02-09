@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { describe, expect, it, vi } from 'vitest';
 import handler from './extract-places-from-text.js';
-import { mockFetchOnce } from '../src/test/utils/mockFetch.js';
+import { mockFetchOnce } from '../../src/test/utils/mockFetch.js';
 
 function createResponse(): VercelResponse {
   return {

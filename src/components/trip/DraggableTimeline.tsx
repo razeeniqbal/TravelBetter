@@ -19,6 +19,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { buildDisplayTimes } from '@/lib/placeTiming';
 import { DayItinerary, Place } from '@/types/trip';
 import { DraggableTimelinePlace } from './DraggableTimelinePlace';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ type DraggableItemMeta = {
 type DaySectionProps = {
   day: DayItinerary;
   dayIndex: number;
+  displayTimes: string[];
   itemIds: string[];
   isEditMode: boolean;
   anchorPlaceId: string | null;
@@ -68,17 +70,10 @@ type DaySectionProps = {
 
 const getDropZoneId = (dayNumber: number) => `day-drop-${dayNumber}`;
 
-function getTimeForIndex(index: number) {
-  // Calculate hour with proper 24-hour wrapping to prevent invalid times like "36 p.m."
-  const hour24 = 9 + Math.floor(index * 1.5);
-  const hour12 = ((hour24 - 1) % 12) + 1; // Convert to 12-hour format (1-12)
-  const period = hour24 < 12 ? 'AM' : 'PM';
-  return `${hour12}:00 ${period}`;
-}
-
 function DaySection({
   day,
   dayIndex,
+  displayTimes,
   itemIds,
   isEditMode,
   anchorPlaceId,
@@ -131,7 +126,7 @@ function DaySection({
                 sortableId={draggableItemId(day.day, place.id, index)}
                 place={place}
                 index={index + 1}
-                time={getTimeForIndex(index)}
+                time={displayTimes[index]}
                 isLast={index === day.places.length - 1}
                 isEditMode={isEditMode}
                 isAnchor={place.id === anchorPlaceId}
@@ -225,6 +220,14 @@ export function DraggableTimeline({
     return days.filter(day => day.day === activeDay);
   }, [activeDay, days, isEditMode]);
 
+  const dayDisplayTimes = useMemo(() => {
+    const timesByDay = new Map<number, string[]>();
+    days.forEach((day) => {
+      timesByDay.set(day.day, buildDisplayTimes(day.places));
+    });
+    return timesByDay;
+  }, [days]);
+
   const activeDragMeta = activeDragId ? itemMetaById.get(activeDragId) : undefined;
 
   const endDrag = () => {
@@ -301,6 +304,7 @@ export function DraggableTimeline({
               key={day.day}
               day={day}
               dayIndex={dayIndex}
+              displayTimes={dayDisplayTimes.get(day.day) || []}
               itemIds={itemIds}
               isEditMode={isEditMode}
               anchorPlaceId={anchorPlaceId}

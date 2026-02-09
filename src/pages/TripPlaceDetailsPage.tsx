@@ -89,6 +89,30 @@ export default function TripPlaceDetailsPage() {
           </div>
         ) : data ? (
           <>
+            {Array.isArray(data.details.photos) && data.details.photos.length > 0 ? (
+              <section className="overflow-hidden rounded-2xl border bg-card">
+                <img
+                  src={data.details.photos[0].photoUri}
+                  alt={`${data.details.canonicalName} photo`}
+                  className="h-52 w-full object-cover sm:h-64"
+                  loading="lazy"
+                />
+                {data.details.photos.length > 1 ? (
+                  <div className="grid grid-cols-3 gap-1 border-t border-border/60 bg-background/80 p-1">
+                    {data.details.photos.slice(1, 4).map((photo) => (
+                      <img
+                        key={photo.photoName}
+                        src={photo.photoUri}
+                        alt={`${data.details.canonicalName} gallery`}
+                        className="h-20 w-full rounded-md object-cover sm:h-24"
+                        loading="lazy"
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
             <section className="rounded-2xl border bg-card p-5">
               <h2 className="text-xl font-semibold">{data.details.canonicalName}</h2>
               <div className="mt-3 inline-flex items-start gap-2 text-sm text-muted-foreground">
@@ -107,7 +131,9 @@ export default function TripPlaceDetailsPage() {
             <section className="rounded-2xl border bg-card p-5">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Reviews</h3>
               {data.reviews.length === 0 ? (
-                <p className="mt-3 text-sm text-muted-foreground">No reviews available</p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No reviews available for this listing yet.
+                </p>
               ) : (
                 <div className="mt-3 space-y-3">
                   {data.reviews.map((review) => (

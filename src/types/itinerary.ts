@@ -187,8 +187,17 @@ export interface PlaceDetailsSnapshot {
   googleMapsUri?: string | null;
   rating?: number | null;
   userRatingCount?: number | null;
+  photos?: PlacePhoto[];
   resolvedBy: 'provider_place_id' | 'text_query';
   source: 'google';
+}
+
+export interface PlacePhoto {
+  photoName: string;
+  photoUri: string;
+  widthPx?: number | null;
+  heightPx?: number | null;
+  attribution?: string | null;
 }
 
 export interface PlaceReview {

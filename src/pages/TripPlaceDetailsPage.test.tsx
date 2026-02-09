@@ -23,6 +23,10 @@ type PlaceDetailsQueryState = {
       formattedAddress: string;
       rating?: number;
       userRatingCount?: number;
+      photos?: Array<{
+        photoName: string;
+        photoUri: string;
+      }>;
       resolvedBy: 'provider_place_id' | 'text_query';
       source: 'google';
     };
@@ -144,6 +148,23 @@ describe('TripPlaceDetailsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /go back/i }));
     expect(navigateMock).toHaveBeenCalledWith(-1);
+  });
+
+  it('renders google place photos when available', () => {
+    placeDetailsState.data.details.photos = [
+      {
+        photoName: 'places/provider-place-1/photos/1',
+        photoUri: 'https://example.com/place-photo.jpg',
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <TripPlaceDetailsPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('img', { name: /kuala lumpur city centre/i })).toBeInTheDocument();
   });
 
   it('renders explicit no-reviews state when reviews are empty', () => {

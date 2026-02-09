@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { DraggableTimeline } from '@/components/trip/DraggableTimeline';
@@ -15,6 +15,7 @@ import { TimelinePlace } from '@/components/trip/TimelinePlace';
 import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getGoogleMapsPlaceUrl, getGoogleMapsRouteUrl } from '@/lib/googleMaps';
+import { buildDisplayTimes } from '@/lib/placeTiming';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTripDetail } from '@/hooks/useTripDetail';
@@ -192,9 +193,9 @@ export default function TripDetailPage() {
     );
   }
 
-  const currentDayItinerary = itinerary.find(d => d.day === activeDay);
+  const currentDayItineraryRaw = itinerary.find(d => d.day === activeDay);
   const totalPlaces = itinerary.reduce((acc, day) => acc + day.places.length, 0);
-  const totalWalking = currentDayItinerary?.places.reduce((acc, p) => acc + (p.walkingTimeFromPrevious || 0), 0) || 0;
+  const totalWalking = currentDayItineraryRaw?.places.reduce((acc, p) => acc + (p.walkingTimeFromPrevious || 0), 0) || 0;
   const totalWalkingKm = (totalWalking * 0.08).toFixed(1);
   const applyTimingOverride = (place: Place): Place => {
     const override = timingOverrides[place.id];
@@ -209,52 +210,15 @@ export default function TripDetailPage() {
     };
   };
 
-  const previewPlaces = (currentDayItinerary?.places || []).map(applyTimingOverride).slice(0, 3);
-  const mapPlaces = (currentDayItinerary?.places || []).map(applyTimingOverride);
+  const itineraryWithTimingOverrides = itinerary.map((day) => ({
+    ...day,
+    places: day.places.map(applyTimingOverride),
+  }));
+
+  const currentDayItinerary = itineraryWithTimingOverrides.find((day) => day.day === activeDay);
+  const previewPlaces = (currentDayItinerary?.places || []).slice(0, 3);
+  const mapPlaces = currentDayItinerary?.places || [];
   const markerPreviewPlaces = mapPlaces;
-
-  const parseClockToMinutes = (value?: string) => {
-    if (!value) return null;
-    const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-    if (!match) return null;
-
-    let hour = Number(match[1]) % 12;
-    const minute = Number(match[2]);
-    const period = match[3].toUpperCase();
-
-    if (period === 'PM') hour += 12;
-
-    return (hour * 60) + minute;
-  };
-
-  const formatMinutesToClock = (totalMinutes: number) => {
-    const normalized = ((totalMinutes % 1440) + 1440) % 1440;
-    const hour24 = Math.floor(normalized / 60);
-    const minute = normalized % 60;
-    const period = hour24 < 12 ? 'AM' : 'PM';
-    const hour12 = ((hour24 + 11) % 12) + 1;
-    return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
-  };
-
-  const buildDisplayTimes = (places: Place[]) => {
-    let cursorMinutes = 9 * 60;
-
-    return places.map((place, index) => {
-      const parsedArrival = parseClockToMinutes(place.arrivalTime);
-      if (parsedArrival !== null) {
-        cursorMinutes = parsedArrival;
-      }
-
-      const arrival = formatMinutesToClock(cursorMinutes);
-      const stayMinutes = place.stayDurationMinutes || place.duration || 60;
-      const nextPlace = places[index + 1];
-      const commuteToNext = nextPlace?.commuteDurationMinutes ?? nextPlace?.walkingTimeFromPrevious ?? 0;
-
-      cursorMinutes += stayMinutes + commuteToNext;
-
-      return arrival;
-    });
-  };
 
   const markerPreviewDisplayTimes = buildDisplayTimes(markerPreviewPlaces);
   // Get all places for anchor selection
@@ -582,7 +546,7 @@ export default function TripDetailPage() {
     placeId: string,
     value: { arrivalTime?: string; stayDurationMinutes: number }
   ) => {
-    const existingPlace = currentDayItinerary?.places.find(place => place.id === placeId);
+    const existingPlace = currentDayItineraryRaw?.places.find(place => place.id === placeId);
     if (!existingPlace || !tripId) return;
 
     setTimingOverrides(prev => ({
@@ -952,7 +916,7 @@ export default function TripDetailPage() {
                     </div>
                   ) : isEditMode || (currentDayItinerary && currentDayItinerary.places.length > 0) ? (
                     <DraggableTimeline
-                      days={itinerary}
+                      days={itineraryWithTimingOverrides}
                       activeDay={activeDay}
                       isEditMode={isEditMode}
                       anchorPlaceId={anchorPlaceId}

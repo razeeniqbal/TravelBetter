@@ -96,7 +96,14 @@ describe('place-details', () => {
         id: 'provider-from-search',
         displayName: { text: 'The Exchange TRX' },
         formattedAddress: 'Kuala Lumpur, Malaysia',
-        reviews: [],
+        reviews: [
+          {
+            authorAttribution: { displayName: 'Bob' },
+            rating: 4,
+            originalText: { text: 'Great mall and train access.' },
+            publishTime: '2026-01-07T00:00:00.000Z',
+          },
+        ],
       }));
 
     const req = createRequest({ queryText: 'The Exchange TRX', destinationContext: 'Kuala Lumpur' });
@@ -109,6 +116,52 @@ describe('place-details', () => {
     const payload = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(payload.details.resolvedBy).toBe('text_query');
     expect(payload.details.providerPlaceId).toBe('provider-from-search');
+  });
+
+  it('falls back to similar place reviews when primary details have none', async () => {
+    vi.stubEnv('GOOGLE_PLACES_API_KEY', 'test-key');
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock
+      .mockResolvedValueOnce(createJsonResponse(200, {
+        id: 'provider-place-2',
+        displayName: { text: 'Kuala Lumpur City Centre' },
+        formattedAddress: 'Kuala Lumpur, Malaysia',
+        reviews: [],
+      }))
+      .mockResolvedValueOnce(createJsonResponse(200, {
+        places: [
+          { id: 'provider-place-2', userRatingCount: 0 },
+          { id: 'provider-place-alt', userRatingCount: 500 },
+        ],
+      }))
+      .mockResolvedValueOnce(createJsonResponse(200, {
+        id: 'provider-place-alt',
+        displayName: { text: 'KLCC Park' },
+        formattedAddress: 'Kuala Lumpur, Malaysia',
+        reviews: [
+          {
+            authorAttribution: { displayName: 'Nearby User' },
+            rating: 5,
+            originalText: { text: 'Excellent atmosphere and skyline views.' },
+            publishTime: '2026-01-09T00:00:00.000Z',
+          },
+        ],
+      }));
+
+    const req = createRequest({
+      providerPlaceId: 'provider-place-2',
+      queryText: 'Kuala Lumpur City Centre',
+      destinationContext: 'Kuala Lumpur',
+    });
+    const res = createResponse();
+
+    await handler(req, res);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const payload = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload.reviews.length).toBeGreaterThan(0);
+    expect(payload.reviewState).toBe('available');
   });
 
   it('returns empty review state when no reviews are available', async () => {

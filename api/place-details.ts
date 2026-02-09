@@ -2,6 +2,22 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 type ResolvedBy = 'provider_place_id' | 'text_query';
 
+interface PlaceSearchCandidate {
+  id: string;
+  displayName: string | null;
+  formattedAddress: string | null;
+  userRatingCount: number;
+  rating: number | null;
+}
+
+interface NormalizedPhoto {
+  photoName: string;
+  photoUri: string;
+  widthPx: number | null;
+  heightPx: number | null;
+  attribution: string | null;
+}
+
 function setCorsHeaders(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -40,6 +56,14 @@ function parseReviewText(value: unknown): string {
   return '';
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function normalizeReviewLimit(value: unknown): number {
   const numeric = asNumber(value);
   if (!numeric || numeric < 1) return 5;
@@ -66,6 +90,16 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 }
 
 async function resolveProviderPlaceId(apiKey: string, queryText: string, destinationContext?: string | null) {
+  const results = await searchPlaceCandidates(apiKey, queryText, destinationContext, 1);
+  return results[0]?.id || null;
+}
+
+async function searchPlaceCandidates(
+  apiKey: string,
+  queryText: string,
+  destinationContext?: string | null,
+  pageSize = 5
+): Promise<PlaceSearchCandidate[]> {
   const textQuery = destinationContext ? `${queryText}, ${destinationContext}` : queryText;
 
   const response = await fetchWithTimeout(
@@ -75,12 +109,18 @@ async function resolveProviderPlaceId(apiKey: string, queryText: string, destina
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress',
+        'X-Goog-FieldMask': [
+          'places.id',
+          'places.displayName',
+          'places.formattedAddress',
+          'places.userRatingCount',
+          'places.rating',
+        ].join(','),
       },
       body: JSON.stringify({
         textQuery,
         languageCode: 'en',
-        pageSize: 1,
+        pageSize,
       }),
     },
     4500
@@ -91,10 +131,24 @@ async function resolveProviderPlaceId(apiKey: string, queryText: string, destina
   }
 
   const payload = await response.json().catch(() => ({}));
-  const firstPlace = Array.isArray(payload?.places) ? payload.places[0] : null;
-  if (!firstPlace || typeof firstPlace !== 'object') return null;
+  const places = asArray(payload?.places);
 
-  return asString((firstPlace as Record<string, unknown>).id);
+  return places
+    .map((entry) => {
+      const record = asRecord(entry);
+      const id = asString(record.id);
+      if (!id) return null;
+      const ratingRaw = Number(record.rating);
+      const userRatingCountRaw = Number(record.userRatingCount);
+      return {
+        id,
+        displayName: parseDisplayName(record.displayName),
+        formattedAddress: asString(record.formattedAddress),
+        userRatingCount: Number.isFinite(userRatingCountRaw) ? userRatingCountRaw : 0,
+        rating: Number.isFinite(ratingRaw) ? ratingRaw : null,
+      };
+    })
+    .filter((entry): entry is PlaceSearchCandidate => Boolean(entry));
 }
 
 async function fetchPlaceDetailsById(apiKey: string, placeId: string) {
@@ -112,6 +166,10 @@ async function fetchPlaceDetailsById(apiKey: string, placeId: string) {
           'rating',
           'userRatingCount',
           'reviews',
+          'photos.name',
+          'photos.widthPx',
+          'photos.heightPx',
+          'photos.authorAttributions.displayName',
         ].join(','),
       },
     },
@@ -129,6 +187,55 @@ async function fetchPlaceDetailsById(apiKey: string, placeId: string) {
   return response.json().catch(() => ({}));
 }
 
+async function fetchPhotoUri(apiKey: string, photoName: string): Promise<string | null> {
+  const response = await fetchWithTimeout(
+    `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=1400&skipHttpRedirect=true`,
+    {
+      method: 'GET',
+      headers: {
+        'X-Goog-Api-Key': apiKey,
+      },
+    },
+    4500
+  );
+
+  if (!response.ok) return null;
+  const payload = await response.json().catch(() => ({}));
+  return asString(payload?.photoUri);
+}
+
+function parsePhotoAttribution(photoRecord: Record<string, unknown>): string | null {
+  const firstAttribution = asArray(photoRecord.authorAttributions)[0];
+  if (!firstAttribution) return null;
+  const attributionRecord = asRecord(firstAttribution);
+  return asString(attributionRecord.displayName);
+}
+
+async function normalizePhotos(apiKey: string, photos: unknown, limit = 4): Promise<NormalizedPhoto[]> {
+  const rawPhotos = asArray(photos).slice(0, limit);
+  const normalized = await Promise.all(rawPhotos.map(async (photo) => {
+    const photoRecord = asRecord(photo);
+    const photoName = asString(photoRecord.name);
+    if (!photoName) return null;
+
+    const photoUri = await fetchPhotoUri(apiKey, photoName);
+    if (!photoUri) return null;
+
+    const widthPxRaw = Number(photoRecord.widthPx);
+    const heightPxRaw = Number(photoRecord.heightPx);
+
+    return {
+      photoName,
+      photoUri,
+      widthPx: Number.isFinite(widthPxRaw) ? widthPxRaw : null,
+      heightPx: Number.isFinite(heightPxRaw) ? heightPxRaw : null,
+      attribution: parsePhotoAttribution(photoRecord),
+    };
+  }));
+
+  return normalized.filter((photo): photo is NormalizedPhoto => Boolean(photo));
+}
+
 function normalizeReviews(
   reviews: unknown,
   providerPlaceId: string,
@@ -140,12 +247,8 @@ function normalizeReviews(
   return reviews
     .slice(0, limit)
     .map((review, index) => {
-      const record = review && typeof review === 'object'
-        ? review as Record<string, unknown>
-        : {};
-      const authorAttribution = record.authorAttribution && typeof record.authorAttribution === 'object'
-        ? record.authorAttribution as Record<string, unknown>
-        : {};
+      const record = asRecord(review);
+      const authorAttribution = asRecord(record.authorAttribution);
 
       const authorName = asString(authorAttribution.displayName) || 'Anonymous';
       const text = parseReviewText(record.originalText) || parseReviewText(record.text);
@@ -210,20 +313,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ error: 'Place could not be resolved' });
     }
 
-    const canonicalName = parseDisplayName((details as Record<string, unknown>).displayName)
+    const detailsRecord = asRecord(details);
+    const canonicalName = parseDisplayName(detailsRecord.displayName)
       || queryText
       || 'Unknown place';
-    const formattedAddress = asString((details as Record<string, unknown>).formattedAddress);
-    const googleMapsUri = asString((details as Record<string, unknown>).googleMapsUri);
-    const ratingValue = Number((details as Record<string, unknown>).rating);
-    const userRatingCountValue = Number((details as Record<string, unknown>).userRatingCount);
+    const formattedAddress = asString(detailsRecord.formattedAddress);
+    const googleMapsUri = asString(detailsRecord.googleMapsUri);
+    const ratingValue = Number(detailsRecord.rating);
+    const userRatingCountValue = Number(detailsRecord.userRatingCount);
 
-    const reviews = normalizeReviews(
-      (details as Record<string, unknown>).reviews,
+    let reviews = normalizeReviews(
+      detailsRecord.reviews,
       finalPlaceId,
       googleMapsUri,
       reviewLimit
     );
+
+    let photos = await normalizePhotos(apiKey, detailsRecord.photos);
+
+    const reviewFallbackQuery = queryText;
+    if (reviews.length === 0 && reviewFallbackQuery) {
+      const fallbackCandidates = await searchPlaceCandidates(apiKey, reviewFallbackQuery, destinationContext, 5);
+
+      for (const candidate of fallbackCandidates) {
+        if (!candidate.id || candidate.id === finalPlaceId) continue;
+        if (candidate.userRatingCount <= 0) continue;
+
+        const candidateDetails = await fetchPlaceDetailsById(apiKey, candidate.id);
+        if (!candidateDetails) continue;
+
+        const candidateDetailsRecord = asRecord(candidateDetails);
+        const candidateReviews = normalizeReviews(
+          candidateDetailsRecord.reviews,
+          candidate.id,
+          asString(candidateDetailsRecord.googleMapsUri),
+          reviewLimit
+        );
+
+        if (candidateReviews.length > 0) {
+          reviews = candidateReviews;
+          if (photos.length === 0) {
+            photos = await normalizePhotos(apiKey, candidateDetailsRecord.photos);
+          }
+          break;
+        }
+      }
+    }
 
     return res.status(200).json({
       details: {
@@ -233,6 +368,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         googleMapsUri,
         rating: Number.isFinite(ratingValue) ? ratingValue : null,
         userRatingCount: Number.isFinite(userRatingCountValue) ? userRatingCountValue : null,
+        photos,
         resolvedBy,
         source: 'google',
       },

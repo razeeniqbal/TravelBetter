@@ -8,11 +8,28 @@ import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { AnchorSelector } from '@/components/trip/AnchorSelector';
 import { AddPlacesOptionsDialog } from '@/components/trip/AddPlacesOptionsDialog';
 import { DayPlaceSearchDialog } from '@/components/trip/DayPlaceSearchDialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { BottomSheet, BottomSheetContent, BottomSheetDescription, BottomSheetTitle } from '@/components/ui/bottom-sheet';
 import { TimelinePlace } from '@/components/trip/TimelinePlace';
-import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2, ChevronUp } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2, ChevronUp, ClipboardCheck, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getGoogleMapsPlaceUrl, getGoogleMapsRouteUrl } from '@/lib/googleMaps';
 import { buildDisplayTimes } from '@/lib/placeTiming';
@@ -22,6 +39,7 @@ import { useTripDetail } from '@/hooks/useTripDetail';
 import { useTripEdit } from '@/hooks/useTripEdit';
 import { useRemixTrip } from '@/hooks/useRemixTrip';
 import { useAddPlaceToItinerary, useCreateDayItinerary, useTripDays } from '@/hooks/useUserTrips';
+import { useDeleteTrip } from '@/hooks/useTripMutations';
 import { supabase } from '@/integrations/supabase/client';
 import { AUTH_DISABLED } from '@/lib/flags';
 import { api } from '@/lib/api';
@@ -62,6 +80,7 @@ export default function TripDetailPage() {
   const latestMarkerSelectionRef = useRef(0);
   const itineraryListContainerRef = useRef<HTMLDivElement | null>(null);
   const [selectionScrollTick, setSelectionScrollTick] = useState(0);
+  const [showDeleteTripDialog, setShowDeleteTripDialog] = useState(false);
 
   const handleSnapPointChange = useCallback((value: number | string | null) => {
     setActiveSnapPoint((prev) => {
@@ -78,6 +97,7 @@ export default function TripDetailPage() {
 
   // Must call all hooks before any early returns
   const remixMutation = useRemixTrip();
+  const deleteTripMutation = useDeleteTrip();
   const createDayItinerary = useCreateDayItinerary();
   const addPlaceToItinerary = useAddPlaceToItinerary();
 
@@ -450,7 +470,20 @@ export default function TripDetailPage() {
       navigate('/auth');
       return;
     }
-    navigate(`/trip/${tripId}/review`);
+    navigate(`/trip/${tripId}/review?day=${activeDay}`);
+  };
+
+  const handleDeleteTrip = async () => {
+    if (!tripId || !isOwner) return;
+
+    try {
+      await deleteTripMutation.mutateAsync(tripId);
+      navigate('/trips');
+    } catch {
+      // Mutation handles toast feedback
+    } finally {
+      setShowDeleteTripDialog(false);
+    }
   };
 
   const handleOpenPlaceDetails = (place: Place) => {
@@ -627,19 +660,59 @@ export default function TripDetailPage() {
                 variant="ghost"
                 size="icon"
                 className="rounded-full"
-                onClick={handleCopyTrip}
-                disabled={remixMutation.isPending}
+                onClick={handleReview}
+                aria-label="Review selected day"
               >
-                <GitFork className="h-5 w-5" />
+                <ClipboardCheck className="h-5 w-5" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 className="rounded-full"
-                onClick={handleReview}
+                onClick={handleCopyTrip}
+                disabled={remixMutation.isPending}
+                aria-label="Remix trip"
               >
-                <MoreHorizontal className="h-5 w-5" />
+                <GitFork className="h-5 w-5" />
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="rounded-full"
+                    aria-label="Trip options"
+                  >
+                    <MoreHorizontal className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                  <DropdownMenuItem onClick={handleReview}>
+                    <ClipboardCheck className="mr-2 h-4 w-4" />
+                    Review day {activeDay}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShare}>
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share trip
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleCopyTrip} disabled={remixMutation.isPending}>
+                    <GitFork className="mr-2 h-4 w-4" />
+                    {remixMutation.isPending ? 'Remixing...' : 'Remix trip'}
+                  </DropdownMenuItem>
+                  {isOwner && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setShowDeleteTripDialog(true)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete trip
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )}
         </div>
@@ -1017,6 +1090,28 @@ export default function TripDetailPage() {
         onAddPlace={handleAddSelectedPlace}
         isSubmitting={isAddingSelectedPlace}
       />
+
+      <AlertDialog open={showDeleteTripDialog} onOpenChange={setShowDeleteTripDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this trip?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{trip.title}" and all itinerary data.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteTripMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTrip}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteTripMutation.isPending}
+            >
+              {deleteTripMutation.isPending ? 'Deleting...' : 'Delete trip'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,13 +19,32 @@ const vibes = [
 export default function ReviewTripPage() {
   const { tripId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<'overview' | 'day-review'>('overview');
-  const [activeDay, setActiveDay] = useState(1);
+  const [activeDay, setActiveDay] = useState(() => {
+    const dayFromQuery = Number(searchParams.get('day'));
+    if (!Number.isFinite(dayFromQuery) || dayFromQuery < 1) return 1;
+    return Math.floor(dayFromQuery);
+  });
   const [selectedVibes, setSelectedVibes] = useState<string[]>(['adventure']);
   const [rating, setRating] = useState(4);
   const [notes, setNotes] = useState('');
 
   const { data: trip, isLoading } = useTripDetail(tripId);
+
+  useEffect(() => {
+    if (!trip) return;
+
+    const dayFromQuery = Number(searchParams.get('day'));
+    const requestedDay = Number.isFinite(dayFromQuery) && dayFromQuery >= 1
+      ? Math.floor(dayFromQuery)
+      : 1;
+    const maxDay = Math.max(1, trip.duration || trip.itinerary.length || 1);
+    const clampedDay = Math.min(requestedDay, maxDay);
+
+    setActiveDay((currentDay) => (currentDay === clampedDay ? currentDay : clampedDay));
+  }, [searchParams, trip]);
+
   const currentDayItinerary = trip?.itinerary.find(d => d.day === activeDay);
 
   if (isLoading) {

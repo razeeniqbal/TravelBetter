@@ -72,6 +72,7 @@ const editState = vi.hoisted(() => ({
   reorderPlaces: vi.fn(),
   movePlaceBetweenDays: vi.fn(),
   removePlace: vi.fn(),
+  removeDay: vi.fn(),
   setAsAnchor: vi.fn(),
   saveChanges: vi.fn(),
   discardChanges: vi.fn(),
@@ -252,6 +253,7 @@ vi.mock('@/hooks/useTripEdit', () => ({
     reorderPlaces: editState.reorderPlaces,
     movePlaceBetweenDays: editState.movePlaceBetweenDays,
     removePlace: editState.removePlace,
+    removeDay: editState.removeDay,
     anchorPlaceId: null,
     setAsAnchor: editState.setAsAnchor,
     saveChanges: editState.saveChanges,
@@ -295,6 +297,7 @@ describe('TripDetailPage', () => {
     editState.reorderPlaces.mockReset();
     editState.movePlaceBetweenDays.mockReset();
     editState.removePlace.mockReset();
+    editState.removeDay.mockReset();
     editState.setAsAnchor.mockReset();
     editState.saveChanges.mockReset();
     editState.discardChanges.mockReset();

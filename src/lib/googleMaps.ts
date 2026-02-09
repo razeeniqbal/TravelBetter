@@ -23,12 +23,30 @@ export type RouteLinkResult = {
 
 const MAX_WAYPOINTS = 8;
 
-function normalizeStopQuery(stop: GoogleRouteStop): string {
-  if (stop.placeId) return `place_id:${stop.placeId}`;
-  if (typeof stop.lat === 'number' && typeof stop.lng === 'number') {
-    return `${stop.lat},${stop.lng}`;
+type NormalizedRouteStop = {
+  query: string;
+  placeId?: string;
+};
+
+function normalizeStopQuery(stop: GoogleRouteStop): NormalizedRouteStop {
+  const label = stop.label.trim();
+
+  if (stop.placeId) {
+    return {
+      query: label || stop.placeId,
+      placeId: stop.placeId,
+    };
   }
-  return stop.label;
+
+  if (typeof stop.lat === 'number' && typeof stop.lng === 'number') {
+    return {
+      query: `${stop.lat},${stop.lng}`,
+    };
+  }
+
+  return {
+    query: label,
+  };
 }
 
 export function getGoogleMapsPlaceUrl(place: GooglePlaceCandidate): string {
@@ -59,11 +77,24 @@ function buildDirectionsSegment(stops: GoogleRouteStop[], mode: GoogleTravelMode
 
   const url = new URL('https://www.google.com/maps/dir/');
   url.searchParams.set('api', '1');
-  url.searchParams.set('origin', origin);
-  url.searchParams.set('destination', destination);
+  url.searchParams.set('origin', origin.query);
+  if (origin.placeId) {
+    url.searchParams.set('origin_place_id', origin.placeId);
+  }
+  url.searchParams.set('destination', destination.query);
+  if (destination.placeId) {
+    url.searchParams.set('destination_place_id', destination.placeId);
+  }
   url.searchParams.set('travelmode', mode);
   if (waypoints.length > 0) {
-    url.searchParams.set('waypoints', waypoints.join('|'));
+    url.searchParams.set('waypoints', waypoints.map((stop) => stop.query).join('|'));
+
+    if (waypoints.every((stop) => Boolean(stop.placeId))) {
+      url.searchParams.set(
+        'waypoints_place_ids',
+        waypoints.map((stop) => stop.placeId as string).join('|')
+      );
+    }
   }
   return url.toString();
 }

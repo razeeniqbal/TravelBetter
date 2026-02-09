@@ -9,6 +9,7 @@ interface TimelinePlaceProps {
   time?: string;
   isLast?: boolean;
   onClick?: () => void;
+  onInfoClick?: (place: Place) => void;
   onViewMap?: (place: Place) => void;
   onTimingChange?: (placeId: string, value: { arrivalTime?: string; stayDurationMinutes: number }) => void;
   isTimingEditable?: boolean;
@@ -21,6 +22,7 @@ export function TimelinePlace({
   time,
   isLast,
   onClick,
+  onInfoClick,
   onViewMap,
   onTimingChange,
   isTimingEditable = false,
@@ -113,7 +115,14 @@ export function TimelinePlace({
                 </p>
               )}
             </div>
-            <button className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted">
+            <button
+              type="button"
+              className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted"
+              onClick={(event) => {
+                event.stopPropagation();
+                onInfoClick?.(place);
+              }}
+            >
               <Info className="h-4 w-4" />
             </button>
           </div>

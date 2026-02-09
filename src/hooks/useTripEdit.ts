@@ -17,6 +17,19 @@ function toSnapshot(itinerary: DayItinerary[], anchorPlaceId: string | null): st
   return JSON.stringify({ itinerary, anchorPlaceId });
 }
 
+function normalizeDayItinerary(days: DayItinerary[]): DayItinerary[] {
+  return days.map((day, index) => {
+    const nextDayNumber = index + 1;
+    const hasDefaultTitle = typeof day.title === 'string' && /^Day\s+\d+$/i.test(day.title.trim());
+
+    return {
+      ...day,
+      day: nextDayNumber,
+      title: hasDefaultTitle || !day.title ? `Day ${nextDayNumber}` : day.title,
+    };
+  });
+}
+
 export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [itinerary, setItinerary] = useState<DayItinerary[]>(initialItinerary);
@@ -129,6 +142,21 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
     });
   }, []);
 
+  const removeDay = useCallback((dayNumber: number) => {
+    setItinerary(prev => {
+      if (prev.length <= 1) return prev;
+
+      const removedDay = prev.find(day => day.day === dayNumber);
+      const nextDays = normalizeDayItinerary(prev.filter(day => day.day !== dayNumber));
+
+      if (removedDay && anchorPlaceId && removedDay.places.some(place => place.id === anchorPlaceId)) {
+        setAnchorPlaceId(null);
+      }
+
+      return nextDays;
+    });
+  }, [anchorPlaceId]);
+
   const setAsAnchor = useCallback((placeId: string) => {
     setAnchorPlaceId(placeId);
 
@@ -172,59 +200,97 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
   const saveChanges = useCallback(async () => {
     setIsSaving(true);
     try {
+      const normalizedItinerary = normalizeDayItinerary(itinerary);
+
       if (AUTH_DISABLED) {
         const trip = getGuestTripById(tripId);
         if (!trip) throw new Error('Trip not found');
-        updateGuestTrip({ ...trip, itinerary });
+        updateGuestTrip({ ...trip, itinerary: normalizedItinerary, duration: normalizedItinerary.length });
         queryClient.invalidateQueries({ queryKey: getTripDetailQueryKey(tripId) });
         toast.success('Changes saved successfully!');
-        setBaselineSnapshot(toSnapshot(itinerary, anchorPlaceId));
+        setItinerary(normalizedItinerary);
+        setBaselineSnapshot(toSnapshot(normalizedItinerary, anchorPlaceId));
         setIsEditMode(false);
         return;
       }
 
-      // Fetch day itinerary IDs
-      const { data: daysData, error: daysError } = await supabase
+      const { data: existingDaysData, error: existingDaysError } = await supabase
         .from('day_itineraries')
-        .select('id, day_number')
+        .select('id')
         .eq('trip_id', tripId)
-        .order('day_number', { ascending: true });
+        .order('id', { ascending: true });
 
-      if (daysError) throw daysError;
+      if (existingDaysError) throw existingDaysError;
 
-      // Update positions for each day
-      for (const dayData of daysData) {
-        const dayItinerary = itinerary.find(d => d.day === dayData.day_number);
-        if (!dayItinerary) continue;
-
-        // Delete existing places for this day
-        await supabase
+      const existingDayIds = (existingDaysData || []).map(day => day.id);
+      if (existingDayIds.length > 0) {
+        const { error: deletePlacesError } = await supabase
           .from('itinerary_places')
           .delete()
-          .eq('day_itinerary_id', dayData.id);
+          .in('day_itinerary_id', existingDayIds);
 
-        // Re-insert with new positions
-        for (let i = 0; i < dayItinerary.places.length; i++) {
-          const place = dayItinerary.places[i];
-          await supabase
-            .from('itinerary_places')
-            .insert({
-              day_itinerary_id: dayData.id,
-              place_id: place.id,
-              position: i,
-              source: place.source,
-              source_note: place.sourceNote,
-              walking_time_from_previous: place.walkingTimeFromPrevious,
-              confidence: place.confidence,
-            });
-        }
+        if (deletePlacesError) throw deletePlacesError;
+
+        const { error: deleteDaysError } = await supabase
+          .from('day_itineraries')
+          .delete()
+          .eq('trip_id', tripId);
+
+        if (deleteDaysError) throw deleteDaysError;
       }
+
+      const dayInserts = normalizedItinerary.map((day, index) => ({
+        trip_id: tripId,
+        day_number: index + 1,
+        title: day.title || `Day ${index + 1}`,
+        notes: day.notes || null,
+      }));
+
+      const { data: createdDays, error: createDaysError } = await supabase
+        .from('day_itineraries')
+        .insert(dayInserts)
+        .select('id, day_number')
+        .order('day_number', { ascending: true });
+
+      if (createDaysError) throw createDaysError;
+
+      const dayIdByNumber = new Map((createdDays || []).map(day => [day.day_number, day.id]));
+      const itineraryPlaceInserts = normalizedItinerary.flatMap((day) => {
+        const dayItineraryId = dayIdByNumber.get(day.day);
+        if (!dayItineraryId) return [];
+
+        return day.places.map((place, index) => ({
+          day_itinerary_id: dayItineraryId,
+          place_id: place.id,
+          position: index,
+          source: place.source,
+          source_note: place.sourceNote,
+          walking_time_from_previous: place.walkingTimeFromPrevious,
+          confidence: place.confidence,
+        }));
+      });
+
+      if (itineraryPlaceInserts.length > 0) {
+        const { error: insertPlacesError } = await supabase
+          .from('itinerary_places')
+          .insert(itineraryPlaceInserts);
+
+        if (insertPlacesError) throw insertPlacesError;
+      }
+
+      const { error: updateTripError } = await supabase
+        .from('trips')
+        .update({ duration: normalizedItinerary.length })
+        .eq('id', tripId);
+
+      if (updateTripError) throw updateTripError;
 
       // Invalidate query to refresh data
       queryClient.invalidateQueries({ queryKey: getTripDetailQueryKey(tripId) });
 
       toast.success('Changes saved successfully!');
-      setBaselineSnapshot(toSnapshot(itinerary, anchorPlaceId));
+      setItinerary(normalizedItinerary);
+      setBaselineSnapshot(toSnapshot(normalizedItinerary, anchorPlaceId));
       setIsEditMode(false);
     } catch (error) {
       console.error('Error saving changes:', error);
@@ -249,6 +315,7 @@ export function useTripEdit({ tripId, initialItinerary, isOwner }: UseTripEditPr
     reorderPlaces,
     movePlaceBetweenDays,
     removePlace,
+    removeDay,
     anchorPlaceId,
     setAsAnchor,
     detectAnchor,

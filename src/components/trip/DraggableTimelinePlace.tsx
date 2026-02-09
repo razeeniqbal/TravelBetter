@@ -20,6 +20,7 @@ interface DraggableTimelinePlaceProps {
   isEditMode?: boolean;
   isAnchor?: boolean;
   onClick?: () => void;
+  onInfoClick?: () => void;
   onRemove?: () => void;
   onSetAnchor?: () => void;
 }
@@ -33,6 +34,7 @@ export function DraggableTimelinePlace({
   isEditMode = false,
   isAnchor = false,
   onClick,
+  onInfoClick,
   onRemove,
   onSetAnchor,
 }: DraggableTimelinePlaceProps) {
@@ -221,7 +223,14 @@ export function DraggableTimelinePlace({
                 </TooltipProvider>
               </div>
             ) : (
-              <button className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted">
+              <button
+                type="button"
+                className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onInfoClick?.();
+                }}
+              >
                 <Info className="h-4 w-4" />
               </button>
             )}

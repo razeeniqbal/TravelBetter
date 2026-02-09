@@ -84,6 +84,7 @@ export default function TripDetailPage() {
     reorderPlaces,
     movePlaceBetweenDays,
     removePlace,
+    removeDay,
     anchorPlaceId,
     setAsAnchor,
     saveChanges,
@@ -376,6 +377,36 @@ export default function TripDetailPage() {
     }
   };
 
+  const handleRemoveDay = (dayNumber: number) => {
+    if (itinerary.length <= 1) {
+      toast.info('At least one day is required');
+      return;
+    }
+
+    const dayToRemove = itinerary.find((day) => day.day === dayNumber);
+    if (!dayToRemove) return;
+
+    const hasPlaces = dayToRemove.places.length > 0;
+    const shouldDelete = window.confirm(
+      hasPlaces
+        ? `Delete Day ${dayNumber} and its ${dayToRemove.places.length} place${dayToRemove.places.length > 1 ? 's' : ''}?`
+        : `Delete Day ${dayNumber}?`
+    );
+
+    if (!shouldDelete) return;
+
+    setMarkerPreviewActive(false);
+    setFocusedPlaceId(null);
+    removeDay(dayNumber);
+    setActiveDay((currentDay) => {
+      if (currentDay > dayNumber) return currentDay - 1;
+      if (currentDay === dayNumber) {
+        return Math.max(1, Math.min(dayNumber, itinerary.length - 1));
+      }
+      return currentDay;
+    });
+  };
+
 
   const handleCopyTrip = async () => {
     if (!user) {
@@ -399,13 +430,24 @@ export default function TripDetailPage() {
   };
 
   const handleOpenPlaceReview = (place: Place) => {
-    setFocusedPlaceId(place.id);
     const reviewUrl = getGoogleMapsReviewUrl({
       placeId: place.placeId,
       displayName: place.displayName,
       name: place.name,
     });
     window.open(reviewUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleExpandPlaceTiming = (place: Place) => {
+    setFocusedPlaceId(place.id);
+    setMarkerPreviewActive(true);
+    setSelectionScrollTick((tick) => tick + 1);
+    handleSnapPointChange(snapPoints[2]);
+  };
+
+  const handleClosePlaceTiming = () => {
+    setMarkerPreviewActive(false);
+    setFocusedPlaceId(null);
   };
 
   const handleViewOnMap = (place: Place) => {
@@ -699,28 +741,41 @@ export default function TripDetailPage() {
             {!isCollapsed && (
               <div className="flex min-h-0 flex-1 flex-col border-t border-border/60">
                 <div className="px-4 pt-3">
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {itinerary.map((day) => (
-                      <button
-                        key={day.day}
-                        onClick={() => {
-                          setActiveDay(day.day);
-                          setMarkerPreviewActive(false);
-                        }}
-                        className={cn(
-                          'rounded-full px-4 py-2 text-sm font-medium transition-all',
-                          activeDay === day.day
-                            ? 'bg-primary text-primary-foreground shadow-sm'
-                            : 'border border-border bg-card text-muted-foreground hover:bg-muted'
-                        )}
+                  <div className="flex items-center gap-2 pb-2">
+                    <div className="relative min-w-0 flex-1 max-w-[17.5rem]">
+                      <div
+                        className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        data-vaul-no-drag
                       >
-                        Day {day.day}
-                      </button>
-                    ))}
+                        {itinerary.map((day) => (
+                          <button
+                            key={day.day}
+                            onClick={() => {
+                              setActiveDay(day.day);
+                              setMarkerPreviewActive(false);
+                            }}
+                            className={cn(
+                              'flex h-9 min-w-[5.5rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-4 text-sm font-semibold transition-all',
+                              activeDay === day.day
+                                ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                                : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                            )}
+                          >
+                            Day {day.day}
+                          </button>
+                        ))}
+                      </div>
+                      {itinerary.length > 3 && (
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute inset-y-0 -right-1 w-10 bg-gradient-to-l from-[#F1F0EE] via-[#F1F0EE] to-transparent"
+                        />
+                      )}
+                    </div>
                     {isOwner && (
                       <button
                         className={cn(
-                          'flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground',
+                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground',
                           isAddingDay && 'pointer-events-none opacity-50'
                         )}
                         onClick={handleAddDay}
@@ -732,6 +787,16 @@ export default function TripDetailPage() {
                           <Plus className="h-4 w-4" />
                         )}
                       </button>
+                    )}
+                    {markerPreviewActive && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 shrink-0 rounded-full px-4 text-sm font-semibold"
+                        onClick={handleClosePlaceTiming}
+                      >
+                        Done
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -784,8 +849,9 @@ export default function TripDetailPage() {
                           isHighlighted={place.id === focusedPlaceId}
                           isTimingEditable={isOwner}
                           onTimingChange={handleTimingChange}
+                          onInfoClick={handleOpenPlaceReview}
                           onViewMap={handleViewOnMap}
-                          onClick={() => handleOpenPlaceReview(place)}
+                          onClick={() => handleExpandPlaceTiming(place)}
                         />
                       ))}
                     </div>
@@ -800,7 +866,9 @@ export default function TripDetailPage() {
                         onMoveBetweenDays={movePlaceBetweenDays}
                         onRemove={removePlace}
                         onSetAnchor={setAsAnchor}
-                        onPlaceClick={handleOpenPlaceReview}
+                        onPlaceClick={handleExpandPlaceTiming}
+                        onPlaceInfoClick={handleOpenPlaceReview}
+                        onRemoveDay={handleRemoveDay}
                         onDragStateChange={setIsDraggingTimeline}
                       />
                     ) : (
@@ -830,8 +898,9 @@ export default function TripDetailPage() {
                           isHighlighted={place.id === focusedPlaceId}
                           isTimingEditable={isOwner}
                           onTimingChange={handleTimingChange}
+                          onInfoClick={handleOpenPlaceReview}
                           onViewMap={handleViewOnMap}
-                          onClick={() => handleOpenPlaceReview(place)}
+                          onClick={() => handleExpandPlaceTiming(place)}
                         />
                       ))}
                       {previewRemaining > 0 && (
@@ -860,7 +929,7 @@ export default function TripDetailPage() {
             )}
 
             {isEditMode && (
-              <div className="border-t bg-background/95 px-4 py-3">
+              <div className="shrink-0 border-t bg-background/95 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
                 <div className="flex gap-3">
                   <Button
                     variant="outline"

@@ -79,8 +79,26 @@ interface DbItineraryPlace {
   } | null;
 }
 
+interface SourceNoteMetadata {
+  providerPlaceId?: string | null;
+  displayName?: string | null;
+  formattedAddress?: string | null;
+}
+
+function parseSourceNoteMetadata(sourceNote: string | null): SourceNoteMetadata | null {
+  if (!sourceNote) return null;
+  try {
+    const parsed = JSON.parse(sourceNote) as SourceNoteMetadata;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function mapDbPlaceToPlace(dbPlace: DbItineraryPlace): Place {
   const place = dbPlace.places;
+  const sourceNoteMetadata = parseSourceNoteMetadata(dbPlace.source_note);
   const commuteDurationMinutes = dbPlace.walking_time_from_previous || undefined;
   const commuteDistanceMeters = commuteDurationMinutes
     ? Math.round(commuteDurationMinutes * 80)
@@ -89,6 +107,8 @@ function mapDbPlaceToPlace(dbPlace: DbItineraryPlace): Place {
   return {
     id: dbPlace.place_id,
     name: place?.name || 'Unknown Place',
+    displayName: sourceNoteMetadata?.displayName || undefined,
+    placeId: sourceNoteMetadata?.providerPlaceId || undefined,
     nameLocal: place?.name_local || undefined,
     category: (place?.category as PlaceCategory) || 'culture',
     source: (dbPlace.source as PlaceSource) || 'user',
@@ -98,7 +118,7 @@ function mapDbPlaceToPlace(dbPlace: DbItineraryPlace): Place {
     duration: place?.duration || undefined,
     cost: place?.cost || undefined,
     rating: place?.rating ? Number(place.rating) : undefined,
-    address: place?.address || undefined,
+    address: place?.address || sourceNoteMetadata?.formattedAddress || undefined,
     coordinates: place?.latitude != null && place?.longitude != null
       ? { lat: Number(place.latitude), lng: Number(place.longitude) }
       : undefined,

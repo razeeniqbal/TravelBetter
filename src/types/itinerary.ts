@@ -61,6 +61,32 @@ export interface ResolvePlacesResponse {
   places: ResolvedPlaceResult[];
 }
 
+export interface PlaceSearchRequest {
+  query: string;
+  destinationContext?: string | null;
+  dayNumber?: number | null;
+  limit?: number;
+}
+
+export interface PlaceSearchResult {
+  providerPlaceId?: string | null;
+  displayName: string;
+  secondaryText?: string | null;
+  formattedAddress?: string | null;
+  coordinates?: {
+    lat?: number | null;
+    lng?: number | null;
+  } | null;
+  categories?: string[];
+  mapsUri?: string | null;
+}
+
+export interface PlaceSearchResponse {
+  query: string;
+  results: PlaceSearchResult[];
+  warnings?: string[];
+}
+
 export interface CommuteInfo {
   distanceMeters?: number | null;
   durationMinutes?: number | null;

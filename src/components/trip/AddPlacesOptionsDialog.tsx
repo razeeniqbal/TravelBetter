@@ -31,6 +31,7 @@ interface AddPlacesOptionsDialogProps {
   onOpenChange: (open: boolean) => void;
   destination?: string;
   dayNumber?: number;
+  onAddManually?: () => void;
   suggestions?: PlacementCandidate[];
   totalDays?: number;
   onConfirmPlacementModes?: (decisions: PlacementModeDecision[]) => void;
@@ -41,6 +42,7 @@ export function AddPlacesOptionsDialog({
   onOpenChange,
   destination,
   dayNumber,
+  onAddManually,
   suggestions,
   totalDays = 1,
   onConfirmPlacementModes,
@@ -132,6 +134,10 @@ export function AddPlacesOptionsDialog({
 
   const handleAddManually = () => {
     onOpenChange(false);
+    if (onAddManually) {
+      onAddManually();
+      return;
+    }
     toast.info('Manual place search coming soon!');
   };
 

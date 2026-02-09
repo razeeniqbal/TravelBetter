@@ -5,6 +5,8 @@ import type {
   ItineraryDraftSaveResponse,
   MapLinkResponse,
   ParseItineraryResponse,
+  PlaceSearchRequest,
+  PlaceSearchResponse,
   ParsedDayGroup,
   PlacementCommitRequest,
   PlacementCommitResponse,
@@ -93,6 +95,7 @@ interface FetchApiOptions {
   method?: HttpMethod;
   body?: Record<string, unknown>;
   query?: QueryParams;
+  signal?: AbortSignal;
 }
 
 function isFetchOptions(value: unknown): value is FetchApiOptions {
@@ -138,6 +141,7 @@ async function fetchApi<T>(
         'Content-Type': 'application/json',
       },
       body: hasBody ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
     });
 
     if (!response.ok) {
@@ -286,6 +290,13 @@ export const api = {
 
   resolvePlaces: (request: ResolvePlacesRequest) =>
     fetchApi<ResolvePlacesResponse>('resolve-places', request as unknown as Record<string, unknown>),
+
+  placeSearch: (request: PlaceSearchRequest, options?: { signal?: AbortSignal }) =>
+    fetchApi<PlaceSearchResponse>('place-search', {
+      method: 'POST',
+      body: request as unknown as Record<string, unknown>,
+      signal: options?.signal,
+    }),
 
   saveItineraryDraft: (tripId: string, request: ItineraryDraftSaveRequest) =>
     fetchApi<ItineraryDraftSaveResponse>('itinerary-draft', {

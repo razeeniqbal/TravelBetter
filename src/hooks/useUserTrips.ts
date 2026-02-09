@@ -18,6 +18,26 @@ import {
 } from '@/lib/guestTrips';
 import type { DayItinerary as TripDay, Place, Trip } from '@/types/trip';
 
+interface PlaceSourceMetadata {
+  providerPlaceId?: string | null;
+  displayName?: string | null;
+  formattedAddress?: string | null;
+}
+
+function serializePlaceSourceNote(metadata: PlaceSourceMetadata): string | undefined {
+  const payload = {
+    providerPlaceId: metadata.providerPlaceId || null,
+    displayName: metadata.displayName || null,
+    formattedAddress: metadata.formattedAddress || null,
+  };
+
+  if (!payload.providerPlaceId && !payload.displayName && !payload.formattedAddress) {
+    return undefined;
+  }
+
+  return JSON.stringify(payload);
+}
+
 async function resolvePlaceInputs(
   places: PlaceInput[],
   destination?: string
@@ -150,17 +170,29 @@ export function useAddPlaceToItinerary() {
       dayItineraryId, 
       placeId,
       placeName,
+      displayName,
+      providerPlaceId,
+      formattedAddress,
       destination,
       coordinates,
     }: { 
       dayItineraryId: string; 
       placeId: string;
       placeName: string;
+      displayName?: string;
+      providerPlaceId?: string | null;
+      formattedAddress?: string | null;
       destination?: string;
       coordinates?: { lat: number; lng: number };
     }) => {
+      const canonicalName = (displayName || placeName).trim();
+      const sourceNote = serializePlaceSourceNote({
+        providerPlaceId,
+        displayName: canonicalName,
+        formattedAddress,
+      });
       const resolvedCoordinates = coordinates
-        ?? await geocodePlaceCoordinates(placeName, destination);
+        ?? await geocodePlaceCoordinates(canonicalName, destination);
 
       if (AUTH_DISABLED) {
         const parsed = parseGuestDayId(dayItineraryId);
@@ -170,9 +202,12 @@ export function useAddPlaceToItinerary() {
 
         const place: Place = {
           id: placeId,
-          name: placeName,
+          name: canonicalName,
+          displayName: canonicalName,
+          placeId: providerPlaceId || undefined,
           category: 'culture',
           source: 'user',
+          address: formattedAddress || undefined,
           coordinates: resolvedCoordinates || undefined,
         };
 
@@ -212,8 +247,9 @@ export function useAddPlaceToItinerary() {
         const { data: newPlace, error: createError } = await supabase
           .from('places')
           .insert({
-            name: placeName,
+            name: canonicalName,
             category: 'culture', // Default category
+            address: formattedAddress ?? null,
             latitude: resolvedCoordinates?.lat ?? null,
             longitude: resolvedCoordinates?.lng ?? null,
           })
@@ -246,6 +282,7 @@ export function useAddPlaceToItinerary() {
           place_id: actualPlaceId,
           position: nextPosition,
           source: 'user',
+          source_note: sourceNote,
         });
       
       if (insertError) throw insertError;
@@ -258,7 +295,7 @@ export function useAddPlaceToItinerary() {
       queryClient.invalidateQueries({ queryKey: ['trip-detail'] });
       toast({
         title: 'Place added!',
-        description: `${variables.placeName} has been added to your itinerary`,
+        description: `${variables.displayName || variables.placeName} has been added to your itinerary`,
       });
     },
     onError: (error) => {

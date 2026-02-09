@@ -19,6 +19,30 @@ export interface NormalizedPlaceResult {
   confidence?: 'high' | 'medium' | 'low';
 }
 
+export interface PlaceSearchCandidate {
+  providerPlaceId?: string | null;
+  displayName: string;
+  secondaryText?: string | null;
+  formattedAddress?: string | null;
+  coordinates?: {
+    lat?: number | null;
+    lng?: number | null;
+  } | null;
+  categories?: string[];
+  mapsUri?: string | null;
+  source: 'places' | 'geocoding';
+}
+
+export class PlaceSearchProviderError extends Error {
+  statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.name = 'PlaceSearchProviderError';
+    this.statusCode = statusCode;
+  }
+}
+
 function normalizeText(value: string) {
   return value.toLowerCase().trim();
 }
@@ -123,6 +147,147 @@ function extractNominatimComponents(address?: Record<string, unknown>): Normaliz
 
   if (!city && !region && !country) return undefined;
   return { city, region, country };
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function parseDisplayName(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (value && typeof value === 'object') {
+    const text = (value as { text?: unknown }).text;
+    if (typeof text === 'string' && text.trim()) return text.trim();
+  }
+  return null;
+}
+
+async function searchWithPlacesText(
+  query: string,
+  destination?: string,
+  limit = 5
+): Promise<PlaceSearchCandidate[]> {
+  const placesApiKey = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!placesApiKey) return [];
+
+  const searchText = destination ? `${query}, ${destination}` : query;
+  const pageSize = Math.min(Math.max(1, limit), 10);
+  const requestBody: Record<string, unknown> = {
+    textQuery: searchText,
+    languageCode: 'en',
+    pageSize,
+  };
+
+  const response = await fetchWithTimeout(
+    'https://places.googleapis.com/v1/places:searchText',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': placesApiKey,
+        'X-Goog-FieldMask': [
+          'places.id',
+          'places.name',
+          'places.displayName',
+          'places.formattedAddress',
+          'places.location',
+          'places.types',
+          'places.googleMapsUri',
+        ].join(','),
+      },
+      body: JSON.stringify(requestBody),
+    },
+    4500
+  );
+
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new PlaceSearchProviderError(429, 'Rate limited by places provider');
+    }
+    throw new PlaceSearchProviderError(502, 'Places provider unavailable');
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  const places = Array.isArray(payload?.places) ? payload.places : [];
+
+  return places
+    .map((place: Record<string, unknown>) => {
+      const displayName = parseDisplayName(place.displayName)
+        || parseDisplayName(place.name)
+        || query;
+      const formattedAddress = typeof place.formattedAddress === 'string'
+        ? place.formattedAddress
+        : null;
+      const location = place.location && typeof place.location === 'object'
+        ? place.location as Record<string, unknown>
+        : null;
+      const lat = typeof location?.latitude === 'number' ? location.latitude : null;
+      const lng = typeof location?.longitude === 'number' ? location.longitude : null;
+      const categories = Array.isArray(place.types)
+        ? place.types.filter((entry): entry is string => typeof entry === 'string')
+        : [];
+
+      return {
+        providerPlaceId: typeof place.id === 'string' ? place.id : null,
+        displayName,
+        secondaryText: formattedAddress,
+        formattedAddress,
+        coordinates: {
+          lat,
+          lng,
+        },
+        categories,
+        mapsUri: typeof place.googleMapsUri === 'string' ? place.googleMapsUri : null,
+        source: 'places' as const,
+      };
+    })
+    .filter(result => Boolean(result.displayName));
+}
+
+function placeResultToSearchCandidate(result: NormalizedPlaceResult): PlaceSearchCandidate | null {
+  if (!result.resolved && !result.displayName) return null;
+
+  return {
+    providerPlaceId: result.placeId || null,
+    displayName: result.displayName || result.name,
+    secondaryText: result.formattedAddress || null,
+    formattedAddress: result.formattedAddress || null,
+    coordinates: {
+      lat: typeof result.lat === 'number' ? result.lat : null,
+      lng: typeof result.lng === 'number' ? result.lng : null,
+    },
+    categories: [],
+    mapsUri: result.placeId
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(result.displayName || result.name)}&query_place_id=${encodeURIComponent(result.placeId)}`
+      : null,
+    source: 'geocoding',
+  };
+}
+
+export async function searchPlaceCandidates(
+  query: string,
+  destination?: string,
+  limit = 5
+): Promise<PlaceSearchCandidate[]> {
+  const placesMatches = await searchWithPlacesText(query, destination, limit);
+  if (placesMatches.length > 0) {
+    return placesMatches.slice(0, Math.min(Math.max(1, limit), 10));
+  }
+
+  const geocodeMatch = await resolveWithGeocoding(query, destination);
+  if (!geocodeMatch) return [];
+
+  const fallbackCandidate = placeResultToSearchCandidate(geocodeMatch);
+  return fallbackCandidate ? [fallbackCandidate] : [];
 }
 
 async function resolveWithPlaces(query: string, destination?: string): Promise<NormalizedPlaceResult | null> {

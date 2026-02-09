@@ -120,8 +120,8 @@ In Vercel Dashboard → Project Settings → Environment Variables, add:
 
 Click "Deploy" - Vercel will:
 - Build the React frontend
-- Deploy the `/api` serverless functions automatically
-- Set up routing so `/api/*` routes to your functions
+- Deploy a single catch-all serverless function at `/api/[...route]`
+- Route `/api/*` endpoints through the internal API router
 
 ### API Routes
 
@@ -141,14 +141,19 @@ The following serverless functions are available:
 | `POST /api/route-link` | Build full route deep link for ordered itinerary stops |
 | `POST /api/generate-ai-suggestions` | Generate AI-powered place suggestions |
 
+All endpoint implementations live in `server/api/`; `api/[...route].ts` dispatches requests so this project stays within Vercel Hobby function-count limits.
+
 ## Project Structure
 
 ```text
 TravelBetter/
-├── api/                    # Vercel Serverless Functions
-│   ├── extract-places-from-url.ts
-│   ├── extract-places-from-image.ts
-│   └── generate-ai-suggestions.ts
+├── api/                    # Vercel entrypoint
+│   └── [...route].ts       # Catch-all router for /api/*
+├── server/
+│   └── api/                # API handler implementations + tests
+│       ├── extract-places-from-url.ts
+│       ├── extract-places-from-image.ts
+│       └── generate-ai-suggestions.ts
 ├── src/
 │   ├── components/         # React components
 │   ├── pages/              # Page components

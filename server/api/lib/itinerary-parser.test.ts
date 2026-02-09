@@ -9,8 +9,8 @@ import {
   multiDaySample,
   mixedHeaderSample,
   noHeaderSample,
-} from '../../src/test/fixtures/itinerarySamples.js';
-import { expectDayLabels, expectDayPlaces, expectNoPlaceNamed } from '../../src/test/utils/itineraryAssertions.js';
+} from '../../../src/test/fixtures/itinerarySamples.js';
+import { expectDayLabels, expectDayPlaces, expectNoPlaceNamed } from '../../../src/test/utils/itineraryAssertions.js';
 
 describe('parseItineraryText', () => {
   it('groups by day headers and filters non-place lines', () => {

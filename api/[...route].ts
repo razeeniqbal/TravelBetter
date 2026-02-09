@@ -43,13 +43,33 @@ const routeHandlers: Record<string, Handler> = {
   'suggestion-placement-preview': suggestionPlacementPreview,
 };
 
-function getRequestedRoute(routeParam: string | string[] | undefined): string {
-  const combined = Array.isArray(routeParam) ? routeParam.join('/') : routeParam || '';
-  return combined.replace(/^\/+|\/+$/g, '');
+function normalizeRoutePath(path: string): string {
+  return path
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/^api\/?/, '')
+    .replace(/^\/+|\/+$/g, '');
+}
+
+function getRequestedRoute(req: VercelRequest): string {
+  const routeParam = req.query.route;
+  const fromQuery = Array.isArray(routeParam) ? routeParam.join('/') : routeParam || '';
+  const normalizedQueryRoute = normalizeRoutePath(fromQuery);
+  if (normalizedQueryRoute) {
+    return normalizedQueryRoute;
+  }
+
+  const requestUrl = req.url || '/';
+  try {
+    const parsedUrl = new URL(requestUrl, 'http://localhost');
+    return normalizeRoutePath(parsedUrl.pathname);
+  } catch {
+    const pathname = requestUrl.split('?')[0] || '';
+    return normalizeRoutePath(pathname);
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const requestedRoute = getRequestedRoute(req.query.route);
+  const requestedRoute = getRequestedRoute(req);
   const routeHandler = routeHandlers[requestedRoute];
 
   if (!routeHandler) {

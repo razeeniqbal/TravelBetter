@@ -239,6 +239,7 @@ export default function TripDetailPage() {
   const previewPlaces = (currentDayItinerary?.places || []).slice(0, 3);
   const mapPlaces = currentDayItinerary?.places || [];
   const markerPreviewPlaces = mapPlaces;
+  const selectedPlaceForActions = mapPlaces.find((place) => place.id === focusedPlaceId) || mapPlaces[0];
 
   const markerPreviewDisplayTimes = buildDisplayTimes(markerPreviewPlaces);
   // Get all places for anchor selection
@@ -527,6 +528,7 @@ export default function TripDetailPage() {
   };
 
   const handleViewOnMap = (place: Place) => {
+    setFocusedPlaceId(place.id);
     const mapUrl = getGoogleMapsPlaceUrl({
       placeId: place.placeId,
       displayName: place.displayName,
@@ -832,12 +834,11 @@ export default function TripDetailPage() {
                     size="sm"
                     className="w-full gap-2 rounded-full"
                     onClick={() => {
-                      const firstPlace = mapPlaces[0];
-                      if (!firstPlace) {
+                      if (!selectedPlaceForActions) {
                         toast.info('No place selected for map details');
                         return;
                       }
-                      handleViewOnMap(firstPlace);
+                      handleViewOnMap(selectedPlaceForActions);
                     }}
                   >
                     View on map
@@ -981,9 +982,8 @@ export default function TripDetailPage() {
                           isHighlighted={place.id === focusedPlaceId}
                           isTimingEditable={isOwner}
                           onTimingChange={handleTimingChange}
-                          onInfoClick={handleOpenPlaceDetails}
+                          onInfoClick={handleExpandPlaceTiming}
                           onViewMap={handleViewOnMap}
-                          onClick={() => handleExpandPlaceTiming(place)}
                         />
                       ))}
                     </div>
@@ -993,12 +993,13 @@ export default function TripDetailPage() {
                       activeDay={activeDay}
                       isEditMode={isEditMode}
                       anchorPlaceId={anchorPlaceId}
+                      highlightedPlaceId={focusedPlaceId}
                       onReorder={reorderPlaces}
                       onMoveBetweenDays={movePlaceBetweenDays}
                       onRemove={removePlace}
                       onSetAnchor={setAsAnchor}
-                      onPlaceClick={handleExpandPlaceTiming}
-                      onPlaceInfoClick={handleOpenPlaceDetails}
+                      onPlaceClick={handleOpenPlaceDetails}
+                      onPlaceInfoClick={handleExpandPlaceTiming}
                       onRemoveDay={handleRemoveDay}
                       onDragStateChange={setIsDraggingTimeline}
                     />

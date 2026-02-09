@@ -32,6 +32,21 @@ import {
 
 type FlowStep = 'hero' | 'ocr-review' | 'personalization' | 'generating';
 
+const JUDGE_TEMPLATE_TEXT = `9am take van 🚌 >> 11.30am reached
+12pm reached Neo Grand Hatyai
+Krua Pa Yad
+Greeway Night Market
+
+DAY 2
+Central Hatyai
+Maribu Cafe
+Lee Garden Night Market 🛍️
+
+DAY3
+Kuay Jab Jae Khwan
+Baan Khun Bhu
+Baroffee Cafe Haytai`;
+
 interface ExtractedPlace {
   name: string;
   displayName?: string;
@@ -44,15 +59,41 @@ interface ExtractedPlace {
   longitude?: number;
 }
 
-// Helper to parse duration from description (destination will be extracted by AI)
-function parseDuration(description: string): number {
-  const daysMatch = description.match(/(\d+)\s*days?/i);
-  return daysMatch ? parseInt(daysMatch[1], 10) : 3;
-}
-
 function extractDurationDays(description: string): number | null {
   const daysMatch = description.match(/(\d+)\s*days?/i);
   return daysMatch ? parseInt(daysMatch[1], 10) : null;
+}
+
+function inferTripDurationDays(
+  description: string,
+  extractedPlaces: ExtractedPlace[],
+  parsedDayGroups: ParsedDayGroup[]
+): number {
+  const explicitDuration = extractDurationDays(description);
+  if (explicitDuration && explicitDuration > 0) {
+    return explicitDuration;
+  }
+
+  const hasExplicitDayMarkers = /\bday\s*\d+\b/i.test(description);
+  if (hasExplicitDayMarkers && parsedDayGroups.length > 0) {
+    return Math.max(1, parsedDayGroups.length);
+  }
+
+  const candidatePlaces = extractedPlaces.length > 0
+    ? extractedPlaces
+    : extractFallbackPlaces(description);
+  const placeCount = candidatePlaces.length;
+
+  if (placeCount <= 0) {
+    return 3;
+  }
+
+  const estimatedVisitMinutes = placeCount * 120;
+  const estimatedCommuteMinutes = Math.max(0, placeCount - 1) * 30;
+  const estimatedTotalMinutes = estimatedVisitMinutes + estimatedCommuteMinutes;
+  const maxMinutesPerDay = 10 * 60;
+
+  return Math.max(1, Math.ceil(estimatedTotalMinutes / maxMinutesPerDay));
 }
 
 // Simple helper to extract destination(s) for display purposes
@@ -255,6 +296,8 @@ export default function CreatePage() {
   
   const [step, setStep] = useState<FlowStep>('hero');
   const [tripDescription, setTripDescription] = useState('');
+  const [premiumFeatureDialogOpen, setPremiumFeatureDialogOpen] = useState(false);
+  const [premiumFeatureLabel, setPremiumFeatureLabel] = useState('');
   
   // Import state
   const [isImporting, setIsImporting] = useState(false);
@@ -274,6 +317,25 @@ export default function CreatePage() {
   const [ocrFailureDialogOpen, setOcrFailureDialogOpen] = useState(false);
   const [lastScreenshotPayload, setLastScreenshotPayload] = useState<ScreenshotImageInput[]>([]);
   const [screenshotStageMessage, setScreenshotStageMessage] = useState('');
+
+  const openPremiumFeatureDialog = (featureLabel: string) => {
+    setPremiumFeatureLabel(featureLabel);
+    setPremiumFeatureDialogOpen(true);
+  };
+
+  const handleUseJudgeTemplate = () => {
+    setTripDescription(JUDGE_TEMPLATE_TEXT);
+    toast.success('Judge template pasted into the input');
+  };
+
+  const handleCopyJudgeTemplate = async () => {
+    try {
+      await navigator.clipboard.writeText(JUDGE_TEMPLATE_TEXT);
+      toast.success('Judge template copied');
+    } catch {
+      toast.error('Unable to copy template. Please copy manually.');
+    }
+  };
 
   const processScreenshotBatch = async (images: ScreenshotImageInput[]) => {
     if (images.length === 0) return;
@@ -479,7 +541,9 @@ export default function CreatePage() {
     // Use resolved destination from AI or extract from description
     const fallbackDestination = getDisplayDestination(tripDescription, extractedDestination);
     const destination = resolvedDestination || fallbackDestination || 'Unknown';
-    const finalDuration = days || parseDuration(tripDescription);
+    const explicitlyRequestedDuration = extractDurationDays(tripDescription);
+    const inferredDuration = inferTripDurationDays(tripDescription, extractedPlaces, parsedDayGroups);
+    const finalDuration = explicitlyRequestedDuration || days || inferredDuration;
 
     // Combine imported and AI-selected places into PlaceInput objects
     const parsedLabels = parsedDayGroups.map(day => day.label);
@@ -677,7 +741,7 @@ export default function CreatePage() {
 
   // Extract basic destination for display (AI will resolve the actual destination)
   const displayDestination = getDisplayDestination(tripDescription, extractedDestination);
-  const tripDuration = parseDuration(tripDescription);
+  const tripDuration = inferTripDurationDays(tripDescription, extractedPlaces, parsedDayGroups);
   const seedPlaceNames = extractedPlaces.map(p => p.name);
 
   return (
@@ -710,6 +774,35 @@ export default function CreatePage() {
                 className="mt-4 min-h-[120px] resize-none rounded-xl border-border bg-card text-base shadow-sm"
               />
 
+              <div className="mt-3 rounded-xl border border-border/70 bg-card p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Judge template
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                  {JUDGE_TEMPLATE_TEXT}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={handleUseJudgeTemplate}
+                  >
+                    Use template
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={handleCopyJudgeTemplate}
+                  >
+                    Copy template
+                  </Button>
+                </div>
+              </div>
+
               {/* Hidden file input for screenshot */}
               <input
                 ref={fileInputRef}
@@ -725,7 +818,7 @@ export default function CreatePage() {
                 <Button 
                   variant="outline" 
                   className="flex-1 gap-2 rounded-full"
-                  onClick={() => setUrlDialogOpen(true)}
+                  onClick={() => openPremiumFeatureDialog('Link import')}
                   disabled={isImporting}
                 >
                   {isImporting && importType === 'url' ? (
@@ -738,7 +831,8 @@ export default function CreatePage() {
                 <Button 
                   variant="outline" 
                   className="flex-1 gap-2 rounded-full"
-                  disabled
+                  onClick={() => openPremiumFeatureDialog('Voice input')}
+                  disabled={isImporting}
                 >
                   <Mic className="h-4 w-4" />
                   Voice
@@ -866,6 +960,24 @@ export default function CreatePage() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleManualTextFallback}>Manual text</AlertDialogCancel>
             <AlertDialogAction onClick={handleRetryScreenshotExtraction}>Retry extraction</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={premiumFeatureDialogOpen} onOpenChange={setPremiumFeatureDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Premium feature</AlertDialogTitle>
+            <AlertDialogDescription>
+              {premiumFeatureLabel || 'This feature'} is available for premium members only.
+              Upgrade to unlock it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Maybe later</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setPremiumFeatureDialogOpen(false)}>
+              Got it
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

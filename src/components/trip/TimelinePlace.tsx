@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Place } from '@/types/trip';
-import { Star, Info, Clock, MapPin } from 'lucide-react';
+import { Star, Clock3, Clock, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TimelinePlaceProps {
@@ -56,7 +56,9 @@ export function TimelinePlace({
     <div
       className="relative flex gap-4"
       data-place-id={place.id}
-      onClick={onClick}
+      onPointerDown={() => {
+        onClick?.();
+      }}
       role="button"
       tabIndex={0}
       onKeyDown={(event) => {
@@ -118,13 +120,18 @@ export function TimelinePlace({
             <button
               type="button"
               className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted"
-              aria-label={`View place details for ${place.name}`}
-              onClick={(event) => {
+              aria-label={`Edit timing for ${place.name}`}
+              onPointerDown={(event) => {
                 event.stopPropagation();
                 onInfoClick?.(place);
               }}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (event.detail !== 0) return;
+                onInfoClick?.(place);
+              }}
             >
-              <Info className="h-4 w-4" />
+              <Clock3 className="h-4 w-4" />
             </button>
           </div>
 

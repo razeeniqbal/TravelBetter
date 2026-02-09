@@ -4,7 +4,7 @@ import {
   DragOverlay,
   DragStartEvent,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   closestCenter,
   useDroppable,
@@ -38,6 +38,7 @@ interface DraggableTimelineProps {
   ) => void;
   onRemove: (dayIndex: number, placeIndex: number) => void;
   onSetAnchor: (placeId: string) => void;
+  highlightedPlaceId?: string | null;
   onPlaceClick?: (place: Place) => void;
   onPlaceInfoClick?: (place: Place) => void;
   onRemoveDay?: (dayNumber: number) => void;
@@ -59,6 +60,7 @@ type DaySectionProps = {
   itemIds: string[];
   isEditMode: boolean;
   anchorPlaceId: string | null;
+  highlightedPlaceId?: string | null;
   draggableItemId: (dayNumber: number, placeId: string, placeIndex: number) => string;
   onRemove: (dayIndex: number, placeIndex: number) => void;
   onSetAnchor: (placeId: string) => void;
@@ -77,6 +79,7 @@ function DaySection({
   itemIds,
   isEditMode,
   anchorPlaceId,
+  highlightedPlaceId,
   draggableItemId,
   onRemove,
   onSetAnchor,
@@ -114,7 +117,6 @@ function DaySection({
         data-vaul-no-drag
         className={cn(
           'rounded-xl border border-border/60 bg-background/70 p-2',
-          isEditMode && 'touch-none', // Prevent touch scrolling during drag
           isEditMode && isOver && 'border-primary bg-primary/5'
         )}
       >
@@ -130,6 +132,7 @@ function DaySection({
                 isLast={index === day.places.length - 1}
                 isEditMode={isEditMode}
                 isAnchor={place.id === anchorPlaceId}
+                isHighlighted={place.id === highlightedPlaceId}
                 onClick={() => onPlaceClick?.(place)}
                 onInfoClick={() => onPlaceInfoClick?.(place)}
                 onRemove={() => onRemove(dayIndex, index)}
@@ -169,15 +172,15 @@ export function DraggableTimeline({
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 6,
+        distance: 10,
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 120,
-        tolerance: 8,
+        delay: 250,
+        tolerance: 10,
       },
     }),
     useSensor(KeyboardSensor, {

@@ -1,4 +1,4 @@
-# TravelBetter
+# TravelBetter 🛫
 
 AI-powered travel planning app to help you discover and organize your perfect trip.
 

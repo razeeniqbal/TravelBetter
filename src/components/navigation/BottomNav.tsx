@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 
 const navItems = [
-  { path: '/', icon: Home, label: 'Home' },
+  { path: '/create', icon: Home, label: 'Home' },
   { path: '/trips', icon: Plane, label: 'Trips' },
   { path: '/explore', icon: Map, label: 'Explore' },
   { path: '/profile', icon: User, label: 'Profile' },

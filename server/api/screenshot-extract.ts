@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getGeminiUrl, getGeminiUrlWithModel, parseGeminiJson } from './_shared/gemini.js';
-import { validateScreenshotExtractPayload } from './lib/itinerary-validator.js';
+import { isValidationFailure, validateScreenshotExtractPayload } from './lib/itinerary-validator.js';
 
 type ExtractResult = {
   filename: string;
@@ -94,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const parsed = validateScreenshotExtractPayload(req.body);
-    if (!parsed.ok) {
+    if (isValidationFailure(parsed)) {
       return res.status(400).json({ error: parsed.error });
     }
 

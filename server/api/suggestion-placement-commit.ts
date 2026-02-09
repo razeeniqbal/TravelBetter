@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { validatePlacementCommitPayload } from './lib/itinerary-validator.js';
+import { isValidationFailure, validatePlacementCommitPayload } from './lib/itinerary-validator.js';
 
 function setCorsHeaders(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const parsed = validatePlacementCommitPayload(req.body);
-    if (!parsed.ok) {
+    if (isValidationFailure(parsed)) {
       return res.status(400).json({ error: parsed.error });
     }
 

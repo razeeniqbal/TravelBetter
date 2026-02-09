@@ -12,6 +12,10 @@ export interface ValidationFailure {
 
 export type ValidationResult<T> = ValidationSuccess<T> | ValidationFailure;
 
+export function isValidationFailure<T>(result: ValidationResult<T>): result is ValidationFailure {
+  return result.ok === false;
+}
+
 export interface DraftPayload {
   tripId: string;
   editSession: {

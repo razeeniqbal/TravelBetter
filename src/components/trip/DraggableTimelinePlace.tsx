@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Place } from '@/types/trip';
-import { Star, Info, GripVertical, Home, Trash2, User, Sparkles } from 'lucide-react';
+import { Star, Clock3, GripVertical, Home, Trash2, User, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +19,7 @@ interface DraggableTimelinePlaceProps {
   isLast?: boolean;
   isEditMode?: boolean;
   isAnchor?: boolean;
+  isHighlighted?: boolean;
   onClick?: () => void;
   onInfoClick?: () => void;
   onRemove?: () => void;
@@ -33,6 +34,7 @@ export function DraggableTimelinePlace({
   isLast, 
   isEditMode = false,
   isAnchor = false,
+  isHighlighted = false,
   onClick,
   onInfoClick,
   onRemove,
@@ -120,23 +122,29 @@ export function DraggableTimelinePlace({
 
       {/* Content Card */}
       <div 
+        {...(isEditMode ? attributes : {})}
+        {...(isEditMode ? listeners : {})}
+        data-vaul-no-drag
         className={cn(
           'mb-4 flex flex-1 gap-3 rounded-xl border bg-card p-3 transition-all',
           !isEditMode && 'hover:shadow-travel cursor-pointer',
-          isEditMode && 'cursor-default',
+          isEditMode && 'cursor-default select-none',
+          isHighlighted && 'ring-2 ring-primary',
           place.source === 'ai' && 'border-violet-200 dark:border-violet-800',
           isAnchor && 'border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-900/20',
           isDragging && 'shadow-lg ring-2 ring-primary'
         )}
-        onClick={!isEditMode ? onClick : undefined}
+        onPointerDown={!isEditMode ? () => onClick?.() : undefined}
+        onClick={!isEditMode ? (event) => {
+          if (event.detail !== 0) return;
+          onClick?.();
+        } : undefined}
       >
         {/* Drag Handle */}
         {isEditMode && (
             <div 
-              {...attributes} 
-              {...listeners}
               data-vaul-no-drag
-              className="touch-none flex cursor-grab items-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+              className="touch-none flex items-center text-muted-foreground"
               aria-label={`Drag ${place.name}`}
             >
               <GripVertical className="h-5 w-5" />
@@ -192,6 +200,9 @@ export function DraggableTimelinePlace({
                           "h-7 w-7 rounded-full",
                           isAnchor && "text-amber-600"
                         )}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                        }}
                         onClick={(e) => {
                           e.stopPropagation();
                           onSetAnchor?.();
@@ -210,6 +221,9 @@ export function DraggableTimelinePlace({
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                        }}
                         onClick={(e) => {
                           e.stopPropagation();
                           onRemove?.();
@@ -226,13 +240,18 @@ export function DraggableTimelinePlace({
               <button
                 type="button"
                 className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted"
-                aria-label={`View place details for ${place.name}`}
-                onClick={(event) => {
+                aria-label={`Edit timing for ${place.name}`}
+                onPointerDown={(event) => {
                   event.stopPropagation();
                   onInfoClick?.();
                 }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (event.detail !== 0) return;
+                  onInfoClick?.();
+                }}
               >
-                <Info className="h-4 w-4" />
+                <Clock3 className="h-4 w-4" />
               </button>
             )}
           </div>

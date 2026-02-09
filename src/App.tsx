@@ -34,7 +34,8 @@ const App = () => (
           <Toaster />
           <Sonner />
           <Routes>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<Navigate to="/create" replace />} />
+            <Route path="/home" element={<HomePage />} />
             {AUTH_DISABLED ? (
               <Route path="/auth" element={<Navigate to="/" replace />} />
             ) : (

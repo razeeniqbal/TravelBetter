@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseItineraryText } from './lib/itinerary-parser.js';
-import { validateScreenshotSubmitPayload } from './lib/itinerary-validator.js';
+import { isValidationFailure, validateScreenshotSubmitPayload } from './lib/itinerary-validator.js';
 
 function normalizePlaceName(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -53,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const parsed = validateScreenshotSubmitPayload(req.body);
-    if (!parsed.ok) {
+    if (isValidationFailure(parsed)) {
       return res.status(400).json({ error: parsed.error });
     }
 

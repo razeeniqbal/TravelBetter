@@ -197,6 +197,10 @@ export function PersonalizationChatInterface({
     };
   }, [chatStep]);
 
+  useEffect(() => {
+    setTripDays(duration || 3);
+  }, [duration]);
+
 
   const handleGetSuggestions = async () => {
     if (!isValid) {
@@ -505,7 +509,7 @@ export function PersonalizationChatInterface({
 
         {/* Loading Step */}
         {chatStep === 'loading' && (
-          <div className="flex flex-col items-center justify-center py-20">
+          <div className="flex flex-col items-center justify-start pb-20 pt-28">
             <div className="relative">
               <div className="h-16 w-16 animate-spin rounded-full border-4 border-muted border-t-primary" />
               <Sparkles className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-primary" />

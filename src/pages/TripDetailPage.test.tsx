@@ -271,6 +271,9 @@ vi.mock('@/components/trip/DraggableTimeline', () => ({
         <button type="button" onClick={() => onMoveBetweenDays(0, 1, 0, 0)}>
           Mock cross-day move
         </button>
+        <button type="button" onClick={() => day?.places[0] && onPlaceClick?.(day.places[0])}>
+          Mock place click
+        </button>
         <button type="button" onClick={() => day?.places[0] && onPlaceInfoClick?.(day.places[0])}>
           Mock place info
         </button>
@@ -676,6 +679,30 @@ describe('TripDetailPage', () => {
     openSpy.mockRestore();
   });
 
+  it('uses selected highlighted place for top View on map action', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /mock marker tap second/i }));
+    expect(await screen.findByText('Highlighted: Second Stop')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^view on map$/i }));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining('query_place_id=place-2-id'),
+      '_blank',
+      'noopener,noreferrer'
+    );
+
+    openSpy.mockRestore();
+  });
+
   it('adds a selected search result to the currently selected day', async () => {
     const { default: TripDetailPage } = await import('./TripDetailPage');
 
@@ -716,8 +743,28 @@ describe('TripDetailPage', () => {
     expect(addPlaceMutationState.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it('opens in-app place details when info action is clicked', async () => {
+  it('opens in-app place details when a place card is clicked', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    dragSheetToExpanded();
+    fireEvent.click(await screen.findByRole('button', { name: /mock place click/i }));
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(navigateMock).toHaveBeenCalledTimes(1);
+    expect(String(navigateMock.mock.calls[0][0])).toContain('/trip/trip-1/place/place-1');
+    expect(String(navigateMock.mock.calls[0][0])).toContain('providerPlaceId=place-1-id');
+
+    openSpy.mockRestore();
+  });
+
+  it('opens timing detail when the clock action is clicked', async () => {
     const { default: TripDetailPage } = await import('./TripDetailPage');
 
     render(
@@ -729,11 +776,7 @@ describe('TripDetailPage', () => {
     dragSheetToExpanded();
     fireEvent.click(await screen.findByRole('button', { name: /mock place info/i }));
 
-    expect(openSpy).not.toHaveBeenCalled();
-    expect(navigateMock).toHaveBeenCalledTimes(1);
-    expect(String(navigateMock.mock.calls[0][0])).toContain('/trip/trip-1/place/place-1');
-    expect(String(navigateMock.mock.calls[0][0])).toContain('providerPlaceId=place-1-id');
-
-    openSpy.mockRestore();
+    expect(await screen.findByText('Highlighted: Raw Place Name')).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

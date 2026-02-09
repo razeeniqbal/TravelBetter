@@ -11,7 +11,7 @@ const mockTrip = vi.hoisted((): Trip => ({
   destination: 'Hatyai',
   country: 'Thailand',
   coverImage: '',
-  duration: 1,
+  duration: 2,
   itinerary: [
     {
       day: 1,
@@ -41,6 +41,11 @@ const mockTrip = vi.hoisted((): Trip => ({
         },
       ],
     },
+    {
+      day: 2,
+      title: 'Day 2',
+      places: [],
+    },
   ],
   author: {
     id: 'user-1',
@@ -51,6 +56,27 @@ const mockTrip = vi.hoisted((): Trip => ({
   remixCount: 0,
   viewCount: 0,
   createdAt: '2026-02-07T00:00:00.000Z',
+}));
+
+const tripDaysState = vi.hoisted(() => ([
+  {
+    id: 'day-1-id',
+    trip_id: 'trip-1',
+    day_number: 1,
+    title: 'Day 1',
+    notes: null,
+  },
+  {
+    id: 'day-2-id',
+    trip_id: 'trip-1',
+    day_number: 2,
+    title: 'Day 2',
+    notes: null,
+  },
+]));
+
+const addPlaceMutationState = vi.hoisted(() => ({
+  mutateAsync: vi.fn(),
 }));
 
 const clickHandlers = vi.hoisted(() => ({
@@ -131,7 +157,55 @@ vi.mock('@/components/trip/AnchorSelector', () => ({
 }));
 
 vi.mock('@/components/trip/AddPlacesOptionsDialog', () => ({
-  AddPlacesOptionsDialog: () => null,
+  AddPlacesOptionsDialog: ({
+    open,
+    dayNumber,
+    onAddManually,
+  }: {
+    open: boolean;
+    dayNumber?: number;
+    onAddManually?: () => void;
+  }) => (open ? (
+    <button type="button" onClick={onAddManually}>
+      {`Mock manual add day ${dayNumber || 1}`}
+    </button>
+  ) : null),
+}));
+
+vi.mock('@/components/trip/DayPlaceSearchDialog', () => ({
+  DayPlaceSearchDialog: ({
+    open,
+    dayNumber,
+    onAddPlace,
+    onOpenChange,
+  }: {
+    open: boolean;
+    dayNumber: number;
+    onAddPlace?: (result: {
+      displayName: string;
+      providerPlaceId?: string;
+      formattedAddress?: string;
+      coordinates?: { lat: number; lng: number };
+    }) => void;
+    onOpenChange?: (open: boolean) => void;
+  }) => (open ? (
+    <div>
+      <button
+        type="button"
+        onClick={() => onAddPlace?.({
+          displayName: 'The Exchange TRX',
+          providerPlaceId: 'provider-place-1',
+          formattedAddress: 'Kuala Lumpur, Malaysia',
+          coordinates: { lat: 3.139, lng: 101.687 },
+        })}
+      >
+        {`Mock confirm add place day ${dayNumber}`}
+      </button>
+      <button type="button" onClick={() => onOpenChange?.(false)}>
+        Mock no results retry
+      </button>
+    </div>
+  ) : null),
 }));
 
 vi.mock('@/components/trip/TimelinePlace', () => ({
@@ -268,6 +342,8 @@ vi.mock('@/hooks/useRemixTrip', () => ({
 
 vi.mock('@/hooks/useUserTrips', () => ({
   useCreateDayItinerary: () => ({ mutateAsync: vi.fn() }),
+  useTripDays: () => ({ data: tripDaysState }),
+  useAddPlaceToItinerary: () => addPlaceMutationState,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -304,6 +380,8 @@ describe('TripDetailPage', () => {
     navigateMock.mockReset();
     mapHandlers.markerTap = undefined;
     mapHandlers.markerTapAt = undefined;
+    addPlaceMutationState.mutateAsync.mockReset();
+    addPlaceMutationState.mutateAsync.mockResolvedValue({ dayItineraryId: 'day-1-id', placeId: 'place-1' });
   });
 
   it('shows consistent loading and empty states', async () => {
@@ -540,7 +618,7 @@ describe('TripDetailPage', () => {
     expect(screen.getByRole('button', { name: /modify itinerary/i })).toBeInTheDocument();
   });
 
-  it('handles marker-to-card focus, commute details, and open route action', async () => {
+  it('opens detailed place timing view when map marker is tapped', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     const { default: TripDetailPage } = await import('./TripDetailPage');
 
@@ -551,6 +629,7 @@ describe('TripDetailPage', () => {
     );
 
     tapMockMarker();
+
     expect(await screen.findByText('Commute from previous: 15 min')).toBeInTheDocument();
     expect(screen.getByText('Highlighted: Raw Place Name')).toBeInTheDocument();
 
@@ -562,6 +641,46 @@ describe('TripDetailPage', () => {
     );
 
     openSpy.mockRestore();
+  });
+
+  it('adds a selected search result to the currently selected day', async () => {
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    dragSheetToExpanded();
+
+    fireEvent.click(await screen.findByRole('button', { name: /day 2/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add new place/i }));
+    expect(screen.getByTestId('trip-itinerary-sheet')).toHaveAttribute('data-sheet-state', 'minimized');
+    fireEvent.click(await screen.findByRole('button', { name: /mock confirm add place day 2/i }));
+
+    expect(addPlaceMutationState.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      dayItineraryId: 'day-2-id',
+      displayName: 'The Exchange TRX',
+      providerPlaceId: 'provider-place-1',
+    }));
+  });
+
+  it('does not mutate itinerary when add flow closes without a selected result', async () => {
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    dragSheetToExpanded();
+
+    fireEvent.click(await screen.findByRole('button', { name: /add new place/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /mock no results retry/i }));
+
+    expect(addPlaceMutationState.mutateAsync).not.toHaveBeenCalled();
   });
 
   it.skip('opens Google Maps reviews when a place is clicked', async () => {

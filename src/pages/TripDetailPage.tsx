@@ -7,6 +7,7 @@ import { ShareModal } from '@/components/shared/ShareModal';
 import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { AnchorSelector } from '@/components/trip/AnchorSelector';
 import { AddPlacesOptionsDialog } from '@/components/trip/AddPlacesOptionsDialog';
+import { DayPlaceSearchDialog } from '@/components/trip/DayPlaceSearchDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { BottomSheet, BottomSheetContent, BottomSheetDescription, BottomSheetTitle } from '@/components/ui/bottom-sheet';
@@ -19,11 +20,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTripDetail } from '@/hooks/useTripDetail';
 import { useTripEdit } from '@/hooks/useTripEdit';
 import { useRemixTrip } from '@/hooks/useRemixTrip';
-import { useCreateDayItinerary } from '@/hooks/useUserTrips';
+import { useAddPlaceToItinerary, useCreateDayItinerary, useTripDays } from '@/hooks/useUserTrips';
 import { supabase } from '@/integrations/supabase/client';
 import { AUTH_DISABLED } from '@/lib/flags';
 import { api } from '@/lib/api';
 import type { Place } from '@/types/trip';
+import type { PlaceSearchResult } from '@/types/itinerary';
 import {
   TRIP_DETAIL_SHEET_STATE,
   TRIP_DETAIL_SNAP_POINTS,
@@ -40,6 +42,8 @@ export default function TripDetailPage() {
   const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
   const [anchorSelectorOpen, setAnchorSelectorOpen] = useState(false);
   const [addPlacesDialogOpen, setAddPlacesDialogOpen] = useState(false);
+  const [dayPlaceSearchOpen, setDayPlaceSearchOpen] = useState(false);
+  const [isAddingSelectedPlace, setIsAddingSelectedPlace] = useState(false);
   const [isAddingDay, setIsAddingDay] = useState(false);
   const [isDraggingTimeline, setIsDraggingTimeline] = useState(false);
   const [focusedPlaceId, setFocusedPlaceId] = useState<string | null>(null);
@@ -69,10 +73,12 @@ export default function TripDetailPage() {
 
   // Fetch trip from database
   const { data: trip, isLoading } = useTripDetail(tripId);
+  const { data: tripDays = [] } = useTripDays(tripId || null);
 
   // Must call all hooks before any early returns
   const remixMutation = useRemixTrip();
   const createDayItinerary = useCreateDayItinerary();
+  const addPlaceToItinerary = useAddPlaceToItinerary();
 
   const isOwner = user?.id === trip?.author.id;
 
@@ -204,7 +210,6 @@ export default function TripDetailPage() {
   };
 
   const previewPlaces = (currentDayItinerary?.places || []).map(applyTimingOverride).slice(0, 3);
-  const previewRemaining = (currentDayItinerary?.places.length || 0) - previewPlaces.length;
   const mapPlaces = (currentDayItinerary?.places || []).map(applyTimingOverride);
   const markerPreviewPlaces = mapPlaces;
 
@@ -251,7 +256,6 @@ export default function TripDetailPage() {
     });
   };
 
-  const previewDisplayTimes = buildDisplayTimes(previewPlaces);
   const markerPreviewDisplayTimes = buildDisplayTimes(markerPreviewPlaces);
   // Get all places for anchor selection
   const allPlaces = itinerary.flatMap(day => day.places);
@@ -318,6 +322,62 @@ export default function TripDetailPage() {
     setMarkerPreviewActive(false);
     handleSnapPointChange(snapPoints[0]);
     setAddToItineraryOpen(true);
+  };
+
+  const getSelectedDayItineraryId = () => {
+    const selectedDay = tripDays.find((day) => day.day_number === activeDay);
+    return selectedDay?.id || null;
+  };
+
+  const handleOpenManualPlaceSearch = () => {
+    if (!tripId || !isOwner) {
+      toast.error('You can only add places to your own trip days');
+      return;
+    }
+
+    if (isEditMode && hasUnsavedChanges) {
+      toast.info('Save or discard your unsaved edits before adding a new place.');
+      return;
+    }
+
+    const selectedDayItineraryId = getSelectedDayItineraryId();
+    if (!selectedDayItineraryId) {
+      toast.error('Please select a valid day before adding a place.');
+      return;
+    }
+
+    setMarkerPreviewActive(false);
+    handleSnapPointChange(snapPoints[0]);
+    setDayPlaceSearchOpen(true);
+  };
+
+  const handleAddSelectedPlace = async (result: PlaceSearchResult) => {
+    const selectedDayItineraryId = getSelectedDayItineraryId();
+    if (!selectedDayItineraryId || !trip) {
+      toast.error('Unable to determine the selected day. Please try again.');
+      return;
+    }
+
+    const displayName = result.displayName?.trim() || result.formattedAddress?.trim() || 'Selected place';
+    const fallbackPlaceId = `manual-place-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const lat = result.coordinates?.lat;
+    const lng = result.coordinates?.lng;
+
+    setIsAddingSelectedPlace(true);
+    try {
+      await addPlaceToItinerary.mutateAsync({
+        dayItineraryId: selectedDayItineraryId,
+        placeId: result.providerPlaceId || fallbackPlaceId,
+        placeName: displayName,
+        displayName,
+        providerPlaceId: result.providerPlaceId || null,
+        formattedAddress: result.formattedAddress || result.secondaryText || null,
+        destination: trip.destination,
+        coordinates: typeof lat === 'number' && typeof lng === 'number' ? { lat, lng } : undefined,
+      });
+    } finally {
+      setIsAddingSelectedPlace(false);
+    }
   };
 
   const handlePrimaryAction = () => {
@@ -615,6 +675,7 @@ export default function TripDetailPage() {
           showOverlay
           aria-label="Trip itinerary sheet"
           aria-describedby={undefined}
+          className={dayPlaceSearchOpen ? 'pointer-events-none touch-none select-none' : undefined}
         >
           <BottomSheetTitle className="sr-only">Trip itinerary sheet</BottomSheetTitle>
           <BottomSheetDescription className="sr-only">
@@ -801,6 +862,21 @@ export default function TripDetailPage() {
                   </div>
                 </div>
 
+                {isOwner && (
+                  <div className="px-4 pb-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-11 w-full gap-2 rounded-2xl border-border/70 bg-card text-sm font-semibold shadow-sm"
+                      onClick={handleOpenManualPlaceSearch}
+                      disabled={isAddingSelectedPlace}
+                    >
+                      {isAddingSelectedPlace ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Add new place
+                    </Button>
+                  </div>
+                )}
+
                 {(userPlacesCount > 0 || aiPlacesCount > 0 || anchorPlaceId) && (
                   <div className="px-4 pb-2">
                     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
@@ -855,60 +931,21 @@ export default function TripDetailPage() {
                         />
                       ))}
                     </div>
-                  ) : isExpanded ? (
-                    isEditMode || (currentDayItinerary && currentDayItinerary.places.length > 0) ? (
-                      <DraggableTimeline
-                        days={itinerary}
-                        activeDay={activeDay}
-                        isEditMode={isEditMode}
-                        anchorPlaceId={anchorPlaceId}
-                        onReorder={reorderPlaces}
-                        onMoveBetweenDays={movePlaceBetweenDays}
-                        onRemove={removePlace}
-                        onSetAnchor={setAsAnchor}
-                        onPlaceClick={handleExpandPlaceTiming}
-                        onPlaceInfoClick={handleOpenPlaceReview}
-                        onRemoveDay={handleRemoveDay}
-                        onDragStateChange={setIsDraggingTimeline}
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                          <Plus className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <p className="text-muted-foreground">No places for this day</p>
-                        <Button
-                          variant="link"
-                          className="mt-2"
-                          onClick={() => setAddPlacesDialogOpen(true)}
-                        >
-                          Add places
-                        </Button>
-                      </div>
-                    )
-                  ) : currentDayItinerary && currentDayItinerary.places.length > 0 ? (
-                    <div className="space-y-3">
-                      {previewPlaces.map((place, index) => (
-                        <TimelinePlace
-                          key={place.id}
-                          place={place}
-                          index={index + 1}
-                          time={previewDisplayTimes[index]}
-                          isLast={index === previewPlaces.length - 1}
-                          isHighlighted={place.id === focusedPlaceId}
-                          isTimingEditable={isOwner}
-                          onTimingChange={handleTimingChange}
-                          onInfoClick={handleOpenPlaceReview}
-                          onViewMap={handleViewOnMap}
-                          onClick={() => handleExpandPlaceTiming(place)}
-                        />
-                      ))}
-                      {previewRemaining > 0 && (
-                        <div className="rounded-xl border border-dashed border-muted-foreground/30 bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
-                          +{previewRemaining} more stops. Pull up to view the full itinerary.
-                        </div>
-                      )}
-                    </div>
+                  ) : isEditMode || (currentDayItinerary && currentDayItinerary.places.length > 0) ? (
+                    <DraggableTimeline
+                      days={itinerary}
+                      activeDay={activeDay}
+                      isEditMode={isEditMode}
+                      anchorPlaceId={anchorPlaceId}
+                      onReorder={reorderPlaces}
+                      onMoveBetweenDays={movePlaceBetweenDays}
+                      onRemove={removePlace}
+                      onSetAnchor={setAsAnchor}
+                      onPlaceClick={handleExpandPlaceTiming}
+                      onPlaceInfoClick={handleOpenPlaceReview}
+                      onRemoveDay={handleRemoveDay}
+                      onDragStateChange={setIsDraggingTimeline}
+                    />
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
@@ -986,6 +1023,16 @@ export default function TripDetailPage() {
         onOpenChange={setAddPlacesDialogOpen}
         destination={trip.destination}
         dayNumber={activeDay}
+        onAddManually={handleOpenManualPlaceSearch}
+      />
+
+      <DayPlaceSearchDialog
+        open={dayPlaceSearchOpen}
+        onOpenChange={setDayPlaceSearchOpen}
+        dayNumber={activeDay}
+        destination={trip.destination}
+        onAddPlace={handleAddSelectedPlace}
+        isSubmitting={isAddingSelectedPlace}
       />
     </div>
   );

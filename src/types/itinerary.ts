@@ -171,6 +171,26 @@ export interface StopTimingUpdateResponse {
   commuteFromPrevious?: CommuteInfo;
 }
 
+export interface PlaceDetailsRequest {
+  providerPlaceId?: string | null;
+  queryText?: string | null;
+  destinationContext?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  reviewLimit?: number;
+}
+
+export interface PlaceDetailsSnapshot {
+  providerPlaceId?: string | null;
+  canonicalName: string;
+  formattedAddress?: string | null;
+  googleMapsUri?: string | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  resolvedBy: 'provider_place_id' | 'text_query';
+  source: 'google';
+}
+
 export interface PlaceReview {
   reviewId: string;
   authorName: string;
@@ -187,6 +207,12 @@ export interface PlaceReviewsResponse {
   placeId: string;
   totalReturned: number;
   reviews: PlaceReview[];
+}
+
+export interface PlaceDetailsResponse {
+  details: PlaceDetailsSnapshot;
+  reviews: PlaceReview[];
+  reviewState?: 'available' | 'empty';
 }
 
 export interface MapLinkResponse {

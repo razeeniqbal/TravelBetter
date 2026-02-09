@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Place, PlaceCategory } from '@/types/trip';
+import type { PlaceDetailsRequest, PlaceDetailsResponse } from '@/types/itinerary';
 import { api } from '@/lib/api';
 
 interface DbPlace {
@@ -197,6 +198,38 @@ export function usePlaceReviews(placeId: string | undefined) {
       }));
     },
     enabled: !!placeId,
+  });
+}
+
+export function usePlaceDetails(request: PlaceDetailsRequest | null) {
+  const providerPlaceId = request?.providerPlaceId?.trim() || null;
+  const queryText = request?.queryText?.trim() || null;
+  const destinationContext = request?.destinationContext?.trim() || null;
+  const hasLookupInput = Boolean(providerPlaceId || queryText);
+
+  return useQuery<PlaceDetailsResponse>({
+    queryKey: [
+      'place-details',
+      providerPlaceId,
+      queryText,
+      destinationContext,
+      request?.lat ?? null,
+      request?.lng ?? null,
+      request?.reviewLimit ?? 5,
+    ],
+    queryFn: async () => {
+      if (!request) {
+        throw new Error('Place details request is required');
+      }
+
+      const { data, error } = await api.getPlaceDetails(request);
+      if (error || !data) {
+        throw error || new Error('Unable to load place details');
+      }
+
+      return data;
+    },
+    enabled: hasLookupInput,
   });
 }
 

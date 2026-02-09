@@ -240,6 +240,7 @@ vi.mock('@/components/trip/DraggableTimeline', () => ({
     onReorder,
     onMoveBetweenDays,
     onPlaceClick,
+    onPlaceInfoClick,
   }: {
     days: Array<{ day: number; places: { id: string; name: string }[] }>;
     activeDay: number;
@@ -251,6 +252,7 @@ vi.mock('@/components/trip/DraggableTimeline', () => ({
       destinationIndex: number
     ) => void;
     onPlaceClick?: (place: { id: string; name: string }) => void;
+    onPlaceInfoClick?: (place: { id: string; name: string }) => void;
   }) => {
     const day = days.find(item => item.day === activeDay) || days[0];
     if (day?.places[0]) {
@@ -263,6 +265,9 @@ vi.mock('@/components/trip/DraggableTimeline', () => ({
         </button>
         <button type="button" onClick={() => onMoveBetweenDays(0, 1, 0, 0)}>
           Mock cross-day move
+        </button>
+        <button type="button" onClick={() => day?.places[0] && onPlaceInfoClick?.(day.places[0])}>
+          Mock place info
         </button>
       </div>
     );
@@ -683,7 +688,7 @@ describe('TripDetailPage', () => {
     expect(addPlaceMutationState.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it.skip('opens Google Maps reviews when a place is clicked', async () => {
+  it('opens in-app place details when info action is clicked', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     const { default: TripDetailPage } = await import('./TripDetailPage');
 
@@ -693,19 +698,13 @@ describe('TripDetailPage', () => {
       </MemoryRouter>
     );
 
-    const handler = clickHandlers.timeline ?? clickHandlers.draggable;
-    if (handler) {
-      handler();
-    } else {
-      const placeName = await screen.findByText('Raw Place Name');
-      fireEvent.click(placeName);
-    }
+    dragSheetToExpanded();
+    fireEvent.click(await screen.findByRole('button', { name: /mock place info/i }));
 
-    expect(openSpy).toHaveBeenCalledWith(
-      'https://www.google.com/maps/place/?q=place_id:place-1-id',
-      '_blank',
-      'noopener,noreferrer'
-    );
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(navigateMock).toHaveBeenCalledTimes(1);
+    expect(String(navigateMock.mock.calls[0][0])).toContain('/trip/trip-1/place/place-1');
+    expect(String(navigateMock.mock.calls[0][0])).toContain('providerPlaceId=place-1-id');
 
     openSpy.mockRestore();
   });

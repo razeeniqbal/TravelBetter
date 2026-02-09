@@ -66,14 +66,38 @@ VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 
 # Google AI (for serverless functions - used in production via Vercel env vars)
 GOOGLE_API_KEY=your_google_api_key
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3-flash-preview
 GOOGLE_API_KEY_TEXT_EXTRACT=your_google_api_key
-GEMINI_TEXT_EXT_MODEL=gemini-2.0-flash
+# Optional override for OCR/text extraction routes. Keep this the same as
+# GEMINI_MODEL (or leave it unset) if you want one model everywhere.
+GEMINI_TEXT_EXT_MODEL=gemini-3-flash-preview
 
 # Google Places/Geocoding (restrict keys to required APIs)
 GOOGLE_PLACES_API_KEY=your_google_places_key
 GOOGLE_GEOCODING_API_KEY=your_google_geocoding_key
 ```
+
+### Gemini Model Selection
+
+This hackathon requires `gemini-3-flash-preview`. We use that model by setting
+`GEMINI_MODEL=gemini-3-flash-preview` in `.env` (and in Vercel environment variables
+for deployed environments).
+
+How model resolution works in this codebase:
+
+1. Most AI routes call `getGeminiUrl(...)` in `server/api/_shared/gemini.ts`.
+2. `getGeminiUrl(...)` reads the model from `getGeminiModel()` in this order:
+   - `GEMINI_MODEL`
+   - `GOOGLE_GEMINI_MODEL`
+   - fallback default: `gemini-2.0-flash`
+3. OCR/text extraction routes (`/api/extract-places-from-text` and `/api/screenshot-extract`)
+   can override this by using `GEMINI_TEXT_EXT_MODEL`. If that variable is set, those
+   routes call `getGeminiUrlWithModel(...)` with that value; otherwise they fall back to
+   the primary `GEMINI_MODEL` flow above.
+
+If you need strict single-model compliance across all Gemini calls, set
+`GEMINI_TEXT_EXT_MODEL=gemini-3-flash-preview` (or leave it unset so it falls back to
+`GEMINI_MODEL`).
 
 ## Available Scripts
 
@@ -110,9 +134,9 @@ In Vercel Dashboard → Project Settings → Environment Variables, add:
 | `VITE_SUPABASE_URL` | Your Supabase project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Your Supabase anon/public key |
 | `GOOGLE_API_KEY` | Your Google AI API key (for Gemini) |
-| `GEMINI_MODEL` | Optional Gemini model name (defaults to `gemini-2.0-flash`) |
+| `GEMINI_MODEL` | Primary Gemini model name (set to `gemini-3-flash-preview` for hackathon) |
 | `GOOGLE_API_KEY_TEXT_EXTRACT` | Optional key override for text extraction (fallbacks to `GOOGLE_API_KEY`) |
-| `GEMINI_TEXT_EXT_MODEL` | Optional model override for text extraction (fallbacks to `GEMINI_MODEL`) |
+| `GEMINI_TEXT_EXT_MODEL` | Optional model override for text extraction routes (fallbacks to `GEMINI_MODEL`) |
 | `GOOGLE_PLACES_API_KEY` | Optional Places API key (Autocomplete/Text Search) |
 | `GOOGLE_GEOCODING_API_KEY` | Optional Geocoding API key (fallbacks to `GOOGLE_API_KEY`) |
 

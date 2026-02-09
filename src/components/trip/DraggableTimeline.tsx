@@ -89,6 +89,7 @@ function DaySection({
       </div>
       <div
         ref={setNodeRef}
+        data-vaul-no-drag
         className={cn(
           'rounded-xl border border-border/60 bg-background/70 p-2',
           isEditMode && 'touch-none', // Prevent touch scrolling during drag
@@ -258,7 +259,7 @@ export function DraggableTimeline({
       onDragCancel={endDrag}
       onDragEnd={handleDragEnd}
     >
-      <div className="space-y-4">
+      <div className="space-y-4" data-vaul-no-drag>
         {visibleDays.map(day => {
           const dayIndex = days.findIndex(item => item.day === day.day);
           const itemIds = day.places.map((place, placeIndex) =>

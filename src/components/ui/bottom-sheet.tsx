@@ -26,7 +26,7 @@ const BottomSheetContent = React.forwardRef<
     <Drawer.Content
       ref={ref}
       className={cn(
-        'pointer-events-auto fixed inset-x-0 bottom-0 z-[70] flex h-[95vh] max-h-[95vh] flex-col rounded-t-[28px] border border-border/60 bg-background/95 shadow-[0_-18px_40px_-24px_rgba(0,0,0,0.45)] backdrop-blur',
+        'pointer-events-auto fixed inset-x-0 bottom-0 z-[70] flex h-[95vh] max-h-[95vh] flex-col overflow-hidden rounded-t-[28px] border border-border/60 bg-background/95 shadow-[0_-18px_40px_-24px_rgba(0,0,0,0.45)] backdrop-blur',
         className
       )}
       {...props}

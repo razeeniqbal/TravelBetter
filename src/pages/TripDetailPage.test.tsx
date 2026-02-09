@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Trip } from '@/types/trip';
+import { dragSheetToExpanded, dragSheetToPreview, tapMockMarker } from '@/test/utils/sheetInteractionHelpers';
 
 const mockTrip = vi.hoisted((): Trip => ({
   id: 'trip-1',
@@ -59,6 +60,7 @@ const clickHandlers = vi.hoisted(() => ({
 
 const mapHandlers = vi.hoisted(() => ({
   markerTap: undefined as undefined | (() => void),
+  markerTapAt: undefined as undefined | ((index: number) => void),
 }));
 
 const navigateMock = vi.hoisted(() => vi.fn());
@@ -88,17 +90,23 @@ vi.mock('@/components/trip/MapPlaceholder', () => ({
     places?: Array<{ id: string; name: string }>;
     onMarkerClick?: (place: { id: string; name: string }) => void;
   }) => {
-    mapHandlers.markerTap = () => {
-      const first = places?.[0];
-      if (first) {
-        onMarkerClick?.(first);
+    mapHandlers.markerTapAt = (index: number) => {
+      const selectedPlace = places?.[index];
+      if (selectedPlace) {
+        onMarkerClick?.(selectedPlace);
       }
     };
+    mapHandlers.markerTap = () => mapHandlers.markerTapAt?.(0);
 
     return (
-      <button type="button" onClick={() => mapHandlers.markerTap?.()}>
-        Mock marker tap
-      </button>
+      <div>
+        <button type="button" onClick={() => mapHandlers.markerTap?.()}>
+          Mock marker tap
+        </button>
+        <button type="button" onClick={() => mapHandlers.markerTapAt?.(1)}>
+          Mock marker tap second
+        </button>
+      </div>
     );
   },
 }));
@@ -144,7 +152,7 @@ vi.mock('@/components/trip/TimelinePlace', () => ({
         {place.commuteDurationMinutes ? (
           <span>{`Commute from previous: ${place.commuteDurationMinutes} min`}</span>
         ) : null}
-        {isHighlighted ? <span>Highlighted</span> : null}
+        {isHighlighted ? <span>{`Highlighted: ${place.name}`}</span> : null}
       </div>
     );
   },
@@ -187,7 +195,37 @@ vi.mock('@/components/trip/DraggableTimeline', () => ({
 }));
 
 vi.mock('@/components/ui/bottom-sheet', () => ({
-  BottomSheet: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  BottomSheet: ({
+    children,
+    activeSnapPoint,
+    setActiveSnapPoint,
+    snapPoints,
+  }: {
+    children?: ReactNode;
+    activeSnapPoint?: number | string | null;
+    setActiveSnapPoint?: (value: number | string | null) => void;
+    snapPoints?: (number | string)[];
+  }) => {
+    const numericSnapPoints = (snapPoints || []) as number[];
+
+    return (
+      <div data-testid="mock-bottom-sheet" data-active-snap-point={String(activeSnapPoint)}>
+        <button
+          type="button"
+          onClick={() => setActiveSnapPoint?.(numericSnapPoints[2] ?? 0.94)}
+        >
+          Mock drag sheet to expanded
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSnapPoint?.(numericSnapPoints[1] ?? 0.72)}
+        >
+          Mock drag sheet to preview
+        </button>
+        {children}
+      </div>
+    );
+  },
   BottomSheetContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   BottomSheetDescription: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   BottomSheetTitle: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
@@ -262,6 +300,7 @@ describe('TripDetailPage', () => {
     editState.discardChanges.mockReset();
     navigateMock.mockReset();
     mapHandlers.markerTap = undefined;
+    mapHandlers.markerTapAt = undefined;
   });
 
   it('shows consistent loading and empty states', async () => {
@@ -322,8 +361,8 @@ describe('TripDetailPage', () => {
       </MemoryRouter>
     );
 
-    const saveButton = await screen.findByRole('button', { name: /save changes/i });
-    fireEvent.click(saveButton);
+    const saveButtons = await screen.findAllByRole('button', { name: /save changes/i });
+    fireEvent.click(saveButtons[0]);
     expect(editState.saveChanges).toHaveBeenCalledTimes(1);
   });
 
@@ -354,8 +393,7 @@ describe('TripDetailPage', () => {
       </MemoryRouter>
     );
 
-    const continueEditingButton = await screen.findByRole('button', { name: /continue editing/i });
-    fireEvent.click(continueEditingButton);
+    dragSheetToExpanded();
 
     const reorderButton = await screen.findByRole('button', { name: /mock reorder/i });
     fireEvent.click(reorderButton);
@@ -388,6 +426,117 @@ describe('TripDetailPage', () => {
     confirmSpy.mockRestore();
   });
 
+  it('keeps baseline summary and actions visible for the preview-capable sheet states', async () => {
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    const sheet = await screen.findByTestId('trip-itinerary-sheet');
+    expect(sheet).toHaveAttribute('data-sheet-state', 'minimized');
+    expect(screen.getByTestId('itinerary-primary-actions')).toBeInTheDocument();
+
+    tapMockMarker();
+
+    expect(sheet).toHaveAttribute('data-sheet-state', 'preview');
+    expect(screen.getByRole('button', { name: /modify itinerary/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open route/i })).toBeInTheDocument();
+  });
+
+  it('opens action-ready preview immediately after marker tap without requiring drag', async () => {
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    tapMockMarker();
+
+    const sheet = await screen.findByTestId('trip-itinerary-sheet');
+    expect(sheet).toHaveAttribute('data-sheet-state', 'preview');
+    expect(screen.getByText(/day 1 • hatyai/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /modify itinerary/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /view on map/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open route/i })).toBeInTheDocument();
+  });
+
+  it('preserves primary itinerary actions while dragging between preview and expanded states', async () => {
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    tapMockMarker();
+    dragSheetToExpanded();
+
+    const sheet = await screen.findByTestId('trip-itinerary-sheet');
+    expect(sheet).toHaveAttribute('data-sheet-state', 'expanded');
+    expect(screen.getByRole('button', { name: /modify itinerary/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open route/i })).toBeInTheDocument();
+
+    dragSheetToPreview();
+
+    expect(sheet).toHaveAttribute('data-sheet-state', 'preview');
+    expect(screen.getByRole('button', { name: /modify itinerary/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /view on map/i })).toBeInTheDocument();
+  });
+
+  it('keeps marker-tap behavior stable on small and standard viewport heights', async () => {
+    const previousInnerHeight = window.innerHeight;
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    for (const viewportHeight of [640, 844]) {
+      Object.defineProperty(window, 'innerHeight', {
+        configurable: true,
+        value: viewportHeight,
+      });
+      window.dispatchEvent(new Event('resize'));
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TripDetailPage />
+        </MemoryRouter>
+      );
+
+      tapMockMarker();
+
+      expect(await screen.findByRole('button', { name: /modify itinerary/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /open route/i })).toBeInTheDocument();
+
+      unmount();
+    }
+
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: previousInnerHeight,
+    });
+  });
+
+  it('uses latest marker selection when map markers are tapped rapidly', async () => {
+    const { default: TripDetailPage } = await import('./TripDetailPage');
+
+    render(
+      <MemoryRouter>
+        <TripDetailPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^mock marker tap$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /mock marker tap second/i }));
+
+    expect(await screen.findByText('Highlighted: Second Stop')).toBeInTheDocument();
+    expect(screen.queryByText('Highlighted: Raw Place Name')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /modify itinerary/i })).toBeInTheDocument();
+  });
+
   it('handles marker-to-card focus, commute details, and open route action', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     const { default: TripDetailPage } = await import('./TripDetailPage');
@@ -398,9 +547,9 @@ describe('TripDetailPage', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /mock marker tap/i }));
+    tapMockMarker();
     expect(await screen.findByText('Commute from previous: 15 min')).toBeInTheDocument();
-    expect(screen.getByText('Highlighted')).toBeInTheDocument();
+    expect(screen.getByText('Highlighted: Raw Place Name')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /open route/i }));
     expect(openSpy).toHaveBeenCalledWith(
